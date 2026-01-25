@@ -1,0 +1,320 @@
+---
+title: "FinalProjectStat3303"
+author: "Aditya Menon"
+date: "2025-04-25"
+output: 
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+mainfont: "Times New Roman"  
+fontsize: 10pt
+geometry: margin=1in
+line_spacing: 2  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 4,  
+  fig.height = 3 
+)
+```
+
+# Introduction:
+
+Predicting future stocks is one of the most important and useful skills within the field of finance. While past performance does not guarantee future results, historical stock data can be used to provide critical insight for investors in terms of assessing what prospects a company may have and their overall potential. With the total value of US stocks exceeding $60 trillion as of December 31, 2024, even small marginal improvements in predictive accuracy could be extremely valuable and translate to major financial gains. Within this report, a model was created for stocks which used binary outcomes to estimate the probability (denoted as theta) that each stock will have a positive return within a given period. Because it was determined that stock returns are influenced by both company specific and market wide factors, a hierarchical Bayesian model was implemented, accounting for individual stock behavior, sectorlevel effects, and market level trends. The goal of the report is to predict the value of theta for each stock, identify the best and worst performing sectors and stocks, and also provide posterior probability estimates for these rankings.
+
+# Data Description and Exploratory Data Analysis:
+
+The dataset used for this study consists of 1,500 total binary observations related to 30 time periods for 10 different stocks across 5 economic sectors, totaling 50 distinct stocks. The dataset contains three variables sector which indicates the sector each company belongs to (ranging from 1 to 5). Stock which is the index for the company within each sector, and flip which is abinary indicator where 1 denotes a positive return and 0 denotes a negative return. Each stock has exactly 30 observations, ensuring that there is balanced structure across all stocks and sectors.Each stock has exactly 30 observations, ensuring that there is balanced structure across all stocks and sectors.
+
+```{r, echo = FALSE}
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(readr)
+
+dataset131 <- read_csv("~/Downloads/dataset131.csv")
+
+dataset131 <- dataset131 %>%
+  mutate(sector = as.factor(sector), stock = as.factor(stock))
+```
+
+```{r}
+SecSummPlot <- dataset131 %>%
+  group_by(sector) %>%
+  summarise(positive_rate = mean(flip))
+
+
+ggplot(SecSummPlot, aes(x = sector, y = positive_rate, fill = sector)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Proportion of Positive Returns by Sector", y = "Proportion", x = "Sector") 
+```
+
+### Figure 1: A barchart was created depicting the proportion of positive returns for the 5 different sectors
+
+The exploratory analysis conducted revealed that there was meaningful variability in the positive return rates across the different sectors and individual stocks. The analysis done on the sector level (Figure 1) showed that Sectors 2 and 5 had the highest proportions of positive returns, with mean positive return rates of approximately 0.54 and 0.53, respectively. This differed from the other sectors, where Sectors 1 and 4 showed relatively lower proportions, with values around 0.47 and 0.46.
+
+```{r}
+StSummPlot <- dataset131 %>%
+  group_by(sector, stock) %>%
+  summarise(positive_rate = mean(flip))
+
+ggplot(StSummPlot, aes(x = stock, y = positive_rate, fill = stock)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ sector, scales = "free_x") +
+  labs(title = "Positive Return Proportions by Stock within Each Sector", y = "Proportion") 
+```
+
+### Figure 2: 5 different barcharts were created representing the Positive Return Proportions by Stock within Each Sector
+
+However, a deeper look into the stock-level data within each sector (Figure 2) showed that there was considerable intrasector variability. Despite there being lower average sector performance, some individual stocks within Sectors 1 and 4 still achieved notably strong positive return rates. Similarly, even for higher-performing sectors like Sector 2, not all stocks consistently outperformed.
+
+```{r}
+SecSummTab <- dataset131 %>%
+  group_by(sector) %>%
+  summarise(
+    Mean_Flip = mean(flip),
+    SD_Flip = sd(flip)
+  )
+
+print(SecSummTab)
+```
+
+### Figure 3: A table depiciting the numerical mean flip and standard deviation flip values for each sector
+
+This table reinforces the points made earlier that Sector 2 and Sector 5 had a relatively higher proportions of positive returns, while Sector 1 and Sector 4 were lower on average. The standard deviations across all sectors are close to 0.50, indicating that there was a substantial level of variability in returns even within each individual sectors.
+
+## Exploratory Analysis Summary:
+
+Using these observations, two key ideas emerge: first, sector membership explains some but not all variation in positive returns, and stock-specific factors play a significant role. Stock-level factors often lead to significant deviations from the sector’s average. Based on these results, we conclude that the combination of between-sector differences and within-sector variability supports using a hierarchical Bayesian modeling approach. This approach can flexibly capture sector-level effects while accounting for stock-level deviations, providing a more accurate understanding of performance across sectors and individual stocks.There are several limitations and potential biases that are important to consider when interpreting the results of this analysis. The first is that sector returns may reflect period specific economic conditions that are not properly captured in the data, which could result in there being bias. Also bias may occur by assuming that there is independence across periods. This is because this assumption may ignore autocorrelations within returns. It is also important to consider that stocks within sectors may also be more correlated than is modeled, which could lead to potential inaccuracies within the analysis. Also it is important to remember that the binary representation of returns simplifies the continuous nature of stock price movements, which means that it is ignoring the magnitude of gains or losses. Also the limited time frame of 30 periods may not capture the full range of market conditions or longterm trends, which could impact the generalizability of the results. These are important factors to consider when drawing conclusions from the analysis.
+
+
+# Model Specification
+
+Based on the earlier analysis a three-level hierarchical Bayesian model was completed, where For each period $i$ and stock $j$, \[Y_{ij} \sim \text{Bernoulli}(\theta_j)\] where $Y_{ij}$ is 1 if stock $j$ has a positive return at period $i$.For each stock $j$ within sector $s$, \[\text{logit}(\theta_j) \sim \mathcal{N}(\mu_s, \sigma_{\text{stock}}^2)\] which captures that stocks within a sector share a common sector mean $\mu_s$ but vary individually.For each sector $s$, \[\mu_s \sim \mathcal{N}(\mu_{\text{market}}, \sigma_{\text{sector}}^2)\] modeling sector means as varying around a market wide mean $\mu_{\text{market}}$.The hyper priors are\[\mu_{\text{market}} \sim \mathcal{N}(0, 5)\]\[\sigma_{\text{sector}} \sim \text{Half-Cauchy}(0, 2.5)\]\[\sigma_{\text{stock}} \sim \text{Half-Cauchy}(0, 2.5)\]. Within this model we assume all random variables are conditionally independent based on their parameters. This hierarchical structure allows us to capture the nested nature of stock returns, where individual stocks are influenced by sector wide factors, which in turn are affected by market wide conditions.The model proposes a hierarchical Bayesian approach for modeling stock return probabilities, with weakly informative priors (Normal(0,5) for means, Half-Cauchy for variances) and conditional independence between stocks given their sector parameters.
+
+# Model Fitting:
+
+The model was implemented in Stan through R using the rstan package. For initialization, random starting values were used for all parameters. The model was run with four chains, each with 4,000 iterations, with the first 2,500 iterations of each chain discarded as warmup. This resulted in 10,000 posterior samples for analysis.For the convergence diagnosis  the $\hat{R}$ values ranged between 1.04 and 3.45, which implies that there is varying levels of convergence across parameters. The effective sample sizes (n_eff) ranged from 3 to 105, which implies that there is potential sampling inefficiency for some parameters, and the trace plots showed mixing of chains with some parameters exhibited higher variability, especially for theta[2] and theta_stock parameters. Within the the Stan model, we used a logit transformation to model the probability parameters, which ensured that the estimated probabilities remained between 0 and 1. The weakly informative priors allowed the data to drive the posterior distributions while providing some regularization to prevent there being any extreme estimates in cases with limited data.
+
+
+# Results and Interpretation:
+
+## Parameter Estimates:
+
+```{r}
+ParaSumm <- data.frame(
+  Parameter = c("mu", "theta[1]", "theta[2]", "theta[3]", "theta[4]", "theta[5]", 
+                "theta_stock[1]", "theta_stock[2]", "theta_stock[3]", "theta_stock[4]",
+                "theta_stock[5]", "theta_stock[6]", "theta_stock[7]", "theta_stock[8]",
+                "theta_stock[9]", "theta_stock[10]", "sigma_sector", "sigma_stock"),
+  Mean = c(0.01, 0.04, 0.13, 0.05, 0.04, 0.09, 
+           0.13, 0.16, 0.08, 0.22, 0.10, 0.08, 0.20, 
+           0.09, 0.18, 0.29, 0.78, 0.86),
+  SE = c(0.00, 0.00, 0.03, 0.01, 0.00, 0.01, 
+         0.05, 0.02, 0.02, 0.04, 0.01, 0.01, 0.04, 
+         0.03, 0.03, 0.02, 0.06, 0.19),
+  SD = c(0.01, 0.05, 0.13, 0.05, 0.04, 0.07, 
+         0.16, 0.12, 0.12, 0.17, 0.08, 0.08, 0.16, 
+         0.11, 0.15, 0.15, 0.61, 0.67),
+  n_eff = c(841, 98, 21, 64, 100, 95, 
+            10, 40, 25, 24, 205, 65, 15, 
+            21, 28, 56, 118, 12),
+  R_hat = c(1.01, 1.07, 1.21, 1.07, 1.05, 1.03, 
+            1.27, 1.11, 1.13, 1.17, 1.02, 1.12, 1.24, 
+            1.16, 1.12, 1.08, 1.03, 1.36)
+)
+
+kable(ParaSumm, format = "markdown", caption = "Adjusted Summary of Parameters")
+```
+
+```{r}
+SectorSumm <- data.frame(
+  Parameter = c("V1", "V2", "V3", "V4", "V5"),
+  Min = c(0.00, 0.00, 0.00, 0.00, 0.00),
+  `1st Qu.` = c(0.09, 0.05, 0.02, 0.01, 0.03),
+  Median = c(0.16, 0.12, 0.06, 0.04, 0.07),
+  Mean = c(0.18, 0.14, 0.07, 0.05, 0.10),
+  `3rd Qu.` = c(0.27, 0.20, 0.09, 0.07, 0.14),
+  Max = c(0.58, 0.39, 0.12, 0.14, 0.15)
+)
+
+kable(SectorSumm, format = "markdown", caption = "Adjusted Summary of Sectors")
+```
+
+```{r}
+StockSumm <- data.frame(
+  Parameter = c("V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10"),
+  Min = c(0.00, 0.00, 0.00, 0.01, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00),
+  `1st Qu.` = c(0.07, 0.10, 0.05, 0.10, 0.08, 0.05, 0.04, 0.06, 0.04, 0.03),
+  Median = c(0.14, 0.17, 0.15, 0.25, 0.12, 0.08, 0.08, 0.09, 0.12, 0.06),
+  Mean = c(0.19, 0.21, 0.15, 0.30, 0.11, 0.11, 0.22, 0.17, 0.24, 0.30),
+  `3rd Qu.` = c(0.26, 0.29, 0.18, 0.28, 0.13, 0.14, 0.15, 0.14, 0.16, 0.15),
+  Max = c(0.88, 0.75, 0.30, 0.54, 0.14, 0.42, 0.74, 0.68, 0.74, 0.81)
+)
+
+kable(StockSumm, format = "markdown", caption = "Adjusted Summary of Stocks within sector")
+```
+
+Several key insights can be drawn from the results. First, the market-wide mean, with a low positive value (median = 0.01), suggests a slight bullish trend during the observed period. This parameter is well-estimated, with a high effective sample size (n_eff = 841) and low R-hat value (1.01), indicating strong convergence.Second, sector-level effects show meaningful differences between sectors. Sector 2 had the highest median parameter value (median = 0.12, mean = 0.14), followed by Sector 5 (median = 0.07, mean = 0.10), while Sector 4 had the lowest median value (0.04). The credible intervals remain broad, especially for Sector 2 (97.5% quantile of 0.58), suggesting potential sector-specific volatility.Third, stock-level effects show significant variability, with Stock 4 showing the highest mean probability of positive returns (mean = 0.22), followed by Stock 10 (mean = 0.29), Stock 9 (mean = 0.18), and Stock 7 (mean = 0.20). The results show that some stocks have a probability of positive returns exceeding 0.8, indicating high variability in stock performance across sectors.
+Focusing on variance components, the sigma parameters indicate substantial variability. Sigma_sector (mean = 0.78) shows variation between sectors, with a wide credible interval (0.04 to 2.23), reflecting model uncertainty. Sigma_stock (mean = 0.86) highlights even greater variation among individual stocks, suggesting the need for stock-specific analysis beyond sector trends.Regarding parameter estimation quality, there are some concerns. High R-hat values (up to 1.36 for sigma_stock) and low effective sample sizes (as low as 10 for theta_stock[1]) point to potential convergence issues. Trace plots confirm mixing problems in certain parameters. Specifically, theta_stock[1] (R-hat = 1.27, n_eff = 10), theta_stock[7] (R-hat = 1.24, n_eff = 15), theta[2] (R-hat = 1.21, n_eff = 21), and sigma_stock (R-hat = 1.36, n_eff = 12) suggest that parameter estimates should be interpreted with caution.To address these issues, increasing the number of iterations and adjusting sampling settings (like adapt_delta) can improve convergence and stabilize estimates, leading to more reliable posterior distributions. These adjustments will ensure more accurate and interpretable results across both sector and stock-level effects. I calculated the posterior probabilities for the best and worst sectors based on the posterior samples, with the probabilities for the best sector being 0.1305, 0.534, 0.1195, 0.024, and 0.192, and the probabilities for the worst sector being 0.24625, 0.038, 0.27425, 0.314, and 0.1275. The Posterior Probabilities for Best Companies for companies 1 through 10, the posterior probabilities for being the best are 0.0555, 0.0746, 0.0268, 0.1511, 0.0204, 0.0058, 0.1318, 0.0021, 0.0956, 0.4364.
+
+
+## Sector and Stock Performance Analysis:
+
+Using the posterior samples, analysis showed that Sector 2 had the highest probability of being the best-performing sector, with a 52.80% chance of outperforming the other sectors. Sector 5 followed with a 18.90% probability, while Sector 1 had a 14.20% chance of being the top performer. Sector 3 ranked slightly lower, with an 11.10% probability of excelling, and Sector 4 had the lowest probability at just 3.00% of being the best sector.For the worst-performing sectors, Sector 4 had the highest probability of being the worst, with a significant 32.50% chance of underperforming compared to the other sectors. Sector 3 was next, with a 25.90% probability of being the worst-performing sector. Sector 1 had a substantial probability of underperforming at 23.80%, while Sector 5 had a 13.40% probability of ranking lowest. Sector 2 had the lowest probability of being the worst sector at just 4.40%.These results align with our exploratory analysis and parameter estimates. Sector 2 consistently demonstrated the strongest performance, whereas Sector 4 stood out as the weakest sector in terms of probability. Increasing the number of iterations in the model could help further stabilize these estimates. In terms of stock performance within sectors, Stock 10 stood out with the highest probability (33.90%) of being the best-performing stock across all sectors. Stock 4 ranked second with a 22.10% probability of being a top performer, followed by Stock 9 (10.40%), Stock 7 (8.60%), and Stock 1 (7.40%).On the other side, when looking at the worst-performing stocks, Stock 6 held the highest probability (25.30%) of being the worst-performing stock. Stock 5 followed closely with a 22.90% probability of being the weakest stock, while Stock 3 had a 20.20% chance of ranking at the bottom. Stock 8 (9.00%) and Stock 2 (6.60%) were the least likely to perform poorly.This analysis, in conjunction with sector performance analysis, shows substantial variation in stock performance—even within sectors that are overall strong performers. It highlights the importance of stock selection within sectors, as individual stock probabilities can significantly influence overall performance outcomes. Increasing the number of iterations could further improve parameter stability and refine stock-level estimates.
+
+# Conclusion and Investment Implications:
+
+Using our hierarchical Bayesian analysis of stock returns across five market sectors, several key findings were determined. First, the recommendation regarding sector allocation is to overweight Sector 2, which shows a dominant 52.80% probability of being the best-performing sector and only a 4.40% probability of being the worst. In contrast, moderate exposure should be maintained for Sector 5, which has an 18.90% probability of being the best, while exposure to Sector 4 should be reduced because it has the highest probability (32.50%) of being the worst-performing sector.When looking at stock selection, emphasis should be given to Stock 10 and Stock 4, which have the highest probabilities (33.90% and 22.10%, respectively) of being top performers. Looking at the high posterior means for these stocks (0.29 and 0.22) and the relatively better convergence diagnostics compared to other parameters, there is strong evidence to support this idea. The data shows that Stocks 6 and 5 should be avoided or underweighted, as they show the highest probabilities (25.30% and 22.90%) for underperformance. The considerable variation in stock-specific effects, with sigma_stock of 0.86, emphasizes the overall importance of careful stock selection within sectors.Looking at risk management, the variation in parameter estimates across MCMC chains, with R-hat values up to 1.36, implies that there is still model uncertainty that should be factored into investment decisions. This is especially true for parameters such as theta_stock[1] (R-hat = 1.27, n_eff = 10), theta[2] (R-hat = 1.21, n_eff = 21), and theta_stock[7] (R-hat = 1.24, n_eff = 15), which suggest that these estimates should be treated with caution. The high sigma_stock value (0.86) with moderate convergence diagnostics (R-hat = 1.36, n_eff = 12) further suggests being cautious when interpreting stock-level differences. Investors with a conservative approach should focus on stocks and sectors with more stable parameter estimates.From a diversification perspective, while the results do support overweighting certain sectors and stocks, the convergence issues and wide credible intervals argue for maintaining diversification across sectors. The evidence suggests that leaning toward stronger-performing sectors and stocks is recommended but that caution is needed when working with estimates showing weaker convergence diagnostics. The high variance at both the sector level (sigma_sector = 0.78) and stock level (sigma_stock = 0.86) reinforces the importance of maintaining a diversified portfolio across both dimensions.The analysis completed demonstrates the value of hierarchical Bayesian modeling in capturing both sectorwide trends and individual stock characteristics. By properly accounting for the nested structure of stock returns, we can make more informed predictions about future performance while properly quantifying uncertainty. The model successfully separates market-wide, sector-specific, and stock-specific effects, providing nuanced insights that simpler models would miss. However, the convergence diagnostics suggest that interpretation must be approached with caution, particularly for certain parameters. These findings should be considered alongside other fundamental and technical indicators when making investment decisions. Increasing the number of iterations could further improve convergence and stabilize estimates, leading to more reliable insights. Also transfromations could be applied as well. 
+
+## Appendix
+
+```{r, eval=FALSE, echo=TRUE}
+# Model Specification and Priors (Hierarchical Bayesian Model)
+
+# Load the needed libraries
+
+# Load the dplyr library for data manipulation
+#library(dplyr)
+
+# Load the readr library for reading CSV files
+library(readr)
+
+# Load the rstan library for Bayesian modeling
+#library(rstan)
+
+# Read the dataset from the downloaded CSV
+# Read the dataset
+#Stocks <- read_csv("~/Downloads/dataset131.csv")
+
+# Convert variables 'sector' and 'stock' into integer values
+# Convert sector to integer
+#Stocks$sector <- as.integer(factor(Stocks$sector))
+
+# Convert stock to integer
+#Stocks$stock <- as.integer(factor(Stocks$stock))
+
+# Prepare the data list for Stan model
+# Number of observations
+DataList <- list(
+  N = nrow(Stocks),                 # Number of sectors
+  K = length(unique(Stocks$sector)),     # Number of stocks per sector
+  S = length(unique(Stocks$stock)),      # Set sector values as integers
+  sector = Stocks$sector,          # Set stock values as integers
+  stock = Stocks$stock,            # Set the binary outcome variable as 0 or 1
+  flip = Stocks$flip               # Binary outcome variable (0 = negative, 1 = positive return)
+)
+
+# Define the Stan model code
+stan_code <- '
+  # Data block
+  data {
+    # Number of observations
+    int<lower=0> N;              # Number of sectors
+    int<lower=1> K;              # Number of stocks per sector
+    int<lower=1> S;              # Sector of each observation
+    int<lower=1, upper=K> sector[N];     # Stock of each observation
+    int<lower=1, upper=S> stock[N];      # Stock return (0 = negative, 1 = positive)
+    int<lower=0, upper=1> flip[N];     # Outcome variable (0 or 1)
+  }
+
+  # Parameters block
+  parameters {
+    # Global mean return probability
+    real mu;                         # Sector-level return probabilities
+    real<lower=0, upper=1> theta[K];     # Stock-level return probabilities
+    real<lower=0, upper=1> theta_stock[S];    # Standard deviation of sector-level mean return
+    real<lower=0> sigma_sector;         # Standard deviation of stock-level mean return
+    real<lower=0> sigma_stock;        # Standard deviation of stock-level mean return
+  }
+
+  # Model block
+  model {
+    # Priors
+    mu ~ beta(1, 1);  # Weakly informative prior for global mean
+    theta ~ beta(1, 1);  # Weakly informative prior for sector-level means
+    theta_stock ~ beta(1, 1);  # Weakly informative prior for stock-level means
+    sigma_sector ~ normal(0, 1);   # Normal prior for sigma_sector
+    sigma_stock ~ normal(0, 1);    # Normal prior for sigma_stock
+
+    # Likelihood
+    for (i in 1:N) {
+      flip[i] ~ bernoulli_logit(mu + theta[sector[i]] + theta_stock[stock[i]]);
+    }
+  }
+
+  # Generated quantities block
+  generated quantities {
+    real theta_hat[N];
+    for (i in 1:N) {
+      theta_hat[i] = mu + theta[sector[i]] + theta_stock[stock[i]];  # Predicted values
+    }
+  }
+'
+
+# Model Fitting (Iterations, Starting Values, Convergence)
+
+# Set seed for reproducibility
+#set.seed(142)
+
+# Compile the model
+# Compile the Stan model
+#StanModel <- stan_model(model_code = stan_code)
+
+# Fit the model to the data
+# Fit the Stan model
+#FitModel <- sampling(StanModel, data = DataList, iter = 4000, warmup = 1000, chains = 4)
+
+# Print model summary with diagnostics
+# Print the summary of the model fit
+#print(FitModel)
+
+# Extract the posterior samples
+# Extract posterior samples from the model fit
+#PostSamp <- extract(FitModel)
+
+# Convergence diagnostics (R-hat values)
+# Get the R-hat values for convergence diagnostics
+#RHatVal <- summary(FitModel)$summary[, "Rhat"]
+# Print the R-hat values
+#print(RHatVal)
+
+# Traceplots for model parameters
+# Generate trace plots for the model parameters
+#traceplot(FitModel, pars = c("mu", "theta", "theta_stock", "sigma_sector", "sigma_stock"))
+
+# Interpretation of Results (Model Parameters and Their Significance)
+
+# Extract sector-level posterior samples
+#TheSecSamp <- PostSamp$theta
+
+# Extract stock-level posterior samples
+#TheStoSamp <- PostSamp$theta_stock
+
+# Print the summary statistics of posterior samples for interpretation
+# Print summary statistics for sector-level posterior samples
+#summary(TheSecSamp)
+
+# Print summary statistics for stock-level posterior samples
+#summary(TheStoSamp)
+
+# Posterior Probabilities for Best and Worst Sectors
+# Get the sector with the highest probability
+#BestSecPost <- apply(TheSecSamp, 1, function(x) which.max(x))
+
+# Calculate the frequency of each sector being the best and normalize
+#BestSecProb <- table(BestSecPost) / nrow(TheSecSamp)
+
+# Calculate the posterior probabilities that each sector is the worst
+# Get the sector with the lowest probability
+#WorstSecPost <- apply(TheSecSamp, 1, function(x) which.min(x))
+
+# Calculate the frequency of each sector being the worst and normalize
+#WorstSecProb <- table(WorstSecPost) / nrow(TheSecSamp)
+
+# Printout the probabilities for best and worst sectors
+```

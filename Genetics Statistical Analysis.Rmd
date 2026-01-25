@@ -1,0 +1,810 @@
+---
+title: "Aditya Menon BS858 Final Project"
+author: "Aditya Menon"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Question 1:
+
+### General Setup: 
+
+```{r}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_knit$set(root.dir = "/Users/adityamenon/Desktop/BS858")
+
+library(tidyverse)
+library(epitools)
+library(pwr)
+library(SKAT)
+library(knitr)
+```
+
+```{r}
+library(readr)
+Project858Data<- read_csv("~/Desktop/BS858/project_sib_pheno_and_RV_data.csv")
+```
+
+## Part a: 
+
+```{r}
+sppComplete <- Project858Data[complete.cases(Project858Data$STSPP1, Project858Data$STSPP2), ]
+corSPP <- cor(sppComplete$STSPP1, sppComplete$STSPP2)
+corTestSPP <- cor.test(sppComplete$STSPP1, sppComplete$STSPP2)
+h2SPP <- 2 * corSPP
+
+cat("Sibling correlation:", round(corSPP, 3), "\n")
+cat("95% CI:", round(corTestSPP$conf.int, 3), "\n")
+cat("P-value:", format(corTestSPP$p.value, scientific = TRUE), "\n")
+cat("Heritability estimate (h²):", round(h2SPP, 3), "\n")
+```
+
+### Results:
+
+Based on the results of the analysis completed the sibling correlation for serum phosphate (STSPP) was calculated using complete pairs where both siblings had measurements available. The correlation coefficient between sibling 1 and sibling 2 was 0.328 with a 95% confidence interval ranging from 0.307 to 0.349. The p-value was extremely small at 5.01×10^-175. This tells us that there is highly significant correlation between siblings. Using the standard formula where heritability equals approximately twice the sibling correlation, the h^2 estimate was calculated to be 0.656.
+
+### Interpretation:
+
+These results show that there is strong evidence that serum phosphate is heritable in this population. The heritability estimate of 0.656 means that about 66% of the variation we see in serum phosphate levels across individuals can be attributed to genetic factors, with the remaining 34% coming from environmental influences and measurement error. The really tight confidence interval (0.307 to 0.349) and the incredibly small p-value tell us we can be confident in this estimate. This level of heritability is pretty typical for metabolic traits and suggests that genetic studies looking at serum phosphate are likely to find meaningful associations. Relating to the question: yes, the results show that serum phosphate is heritable in this population, with an estimated heritability of approximately 66%.
+
+## Part b:
+
+```{r}
+asComplete <- Project858Data[complete.cases(Project858Data$AS1, Project858Data$AS2), ]
+asTable <- table(Proband = asComplete$AS1 - 1, Sibling = asComplete$AS2 - 1)
+print(asTable)
+
+orAS <- oddsratio(asTable, method = "wald")
+print(orAS)
+
+Kpop <- mean(asComplete$AS1 - 1)
+Krel <- sum(asComplete$AS2[asComplete$AS1 == 2] == 2) / sum(asComplete$AS1 == 2)
+lambdaSib <- Krel / Kpop
+
+cat("AS Prevalence:", round(Kpop, 3), "\n")
+cat("Lambda sibling:", round(lambdaSib, 2), "\n")
+```
+
+### Results:
+
+For the AS familiarity analysis, I created a contingency table that compared the AS status between siblings and calculated the odds ratio. The odds ratio for AS among siblings was 1.07 with a 95% confidence interval of 0.90 to 1.28 and a p-value of 0.41. The prevalence of AS in the general population (using all individuals) was 15.7%, while the prevalence among siblings of affected individuals was slightly higher at 17.1%. This produced a lambda sibling value of 1.09.
+
+### Interpretation:
+
+These results don't show strong evidence that AS runs in families in our sample. Lambda sibling is a measure of familial aggregation, if there is no familial clustering, the result would be expected to be 1.0, and the calculated value of 1.09 is pretty close to that. The odds ratio of 1.07 tells us that siblings of affected individuals have only about 7% higher odds of having AS compared to the general population, and this increase isn't statistically significant (p = 0.41). There are a few possible explanations for this, it is possible that the genetic contribution to AS is actually pretty small, or environmental factors could be playing a bigger role than genetics. It's also possible that we just don't have enough statistical power to pick up a modest familial effect with our sample size. The confidence interval crossing 1.0 and including both protective effects (0.90) and modest risk increases (1.28) tells us that we can't rule out either scenario. Relating to the question: AS does not show strong evidence of being familial in this population, with a lambda sibling value of only 1.09 and a non-significant odds ratio.
+
+# Question 2:
+
+```{r}
+system("/Users/adityamenon/Desktop/BS858/plink_mac_20250819/plink --file /Users/adityamenon/Desktop/BS858/project --filter-controls --missing --freq --out /Users/adityamenon/Desktop/BS858/missing_report")
+
+system("/Users/adityamenon/Desktop/BS858/plink_mac_20250819/plink --file /Users/adityamenon/Desktop/BS858/project --missing --out /Users/adityamenon/Desktop/BS858/project_all_missing")
+
+freqControls <- read_table("/Users/adityamenon/Desktop/BS858/missing_report.frq")
+missingData <- read_table("/Users/adityamenon/Desktop/BS858/project_all_missing.lmiss")
+
+afSummary <- freqControls %>%
+  select(SNP, MAF = MAF)
+
+missingSnps <- missingData %>%
+  select(SNP, F_MISS) %>%
+  mutate(MissPct = F_MISS * 100) %>%
+  arrange(desc(F_MISS))
+
+snpsHighMiss <- missingSnps %>% filter(MissPct > 5)
+cat("SNPs with missing rate > 5%:\n")
+if(nrow(snpsHighMiss) > 0) {
+  print(snpsHighMiss)
+} else {
+  cat(" None\n")
+}
+
+
+refAF <- data.frame(
+  SNP = c("rs10455872", "rs10929458", "rs11166276", "rs11228502", "rs11643207",
+          "rs1256358", "rs12625739", "rs17156153", "rs2869876", "rs3901734",
+          "rs55722102", "rs59030006", "rs61817379", "rs62139062", "rs6813758",
+          "rs7677751", "rs7802307"),
+  RefMAF = c(0.06, 0.69, 0.50, 0.71, 0.62, 0.43, 0.12, 0.08, 0.21, 0.25,
+             0.80, 0.50, 0.66, 0.29, 0.59, 0.13, 0.42)
+)
+
+cat("\nComparison with Trenkwalder et al.:\n")
+comparison <- afSummary %>%
+  left_join(refAF, by = "SNP") %>%
+  mutate(Diff = abs(MAF - RefMAF)) %>%
+  select(SNP, MAF, RefMAF, Diff)
+
+print(comparison)
+```
+
+## Results:
+
+I calculated the missing rates and allele frequencies using PLINK, and reported the allele frequencies specifically in controls to avoid any potential bias from case-control differences. The missing rate analysis identified two SNPs with missing rates exceeding 5%: rs10455872 with 71.4% missing genotypes and rs12625739 with 42.9% missing genotypes. For the allele frequency comparison with Trenkwalder et al., most SNPs showed pretty similar frequencies. For example the SNP rs1256358 differed by only 0.003, rs3901734 by 0.0004, and rs59030006 by 0.002. However it is important to note that some SNPs did show some substantial differences: the SNP rs55722102 had a massive difference (0.20 vs 0.80), rs10929458 (0.31 vs 0.69), rs61817379 (0.35 vs 0.66), and rs11228502 (0.29 vs 0.71).
+
+## Interpretation: 
+
+I decided to only report the allele frequencies in controls only, because including cases could possibly artificially inflate or deflate frequencies if the SNPs are truly associated with disease. This could result in a possibly biased estimate of the population frequency. The two SNPs with high missing rates (rs10455872 and rs12625739) need to be excluded from all subsequent analyses because the results showed us that we can't trust the quality of genotyping when that much data is missing. This is because it could indicate technical problems with those assays. The frequency differences compared to Trenkwalder are interesting and could have important implications for replication.
+
+The huge difference for rs55722102 (0.20 vs 0.80) most likely means that they reported the frequency of the alternate allele while my work reported the reference allele. This is more just a coding difference, not a real biological difference. But the other major differences like rs10929458, rs61817379, and rs11228502 likely reflect genuine population differences. The Trenkwalder study was done in Europeans, and if our cohort includes substantial South Asian ancestry, it's makes sense to expect to see different allele frequencies because these populations have different genetic histories. This matters a lot for replication because SNPs with very different frequencies might not show the same associations across populations due to different linkage disequilibrium patterns or population-specific genetic architecture. Relating to the question: two SNPs (rs10455872 and rs12625739) have missing rates greater than 5% and should be removed from subsequent analyses, and several SNPs did show substantial allele frequency differences from the European reference study. This suggests that there is possible population-specific effects. It is important to note that two SNPs were excluded from all subsequent association analyses (Questions 8, 9, and 10) to maintain data quality and methodological consistency.
+
+# Question 3: 
+
+```{r}
+system("/Users/adityamenon/Desktop/BS858/plink_mac_20250819/plink --file /Users/adityamenon/Desktop/BS858/project --hardy --filter-controls --out /Users/adityamenon/Desktop/BS858/hwe_controls")
+
+hweData <- read_table("/Users/adityamenon/Desktop/BS858/hwe_controls.hwe")
+bonfThreshold <- 0.05 /17
+
+hweData <- hweData %>%
+  mutate(BonferroniSig = P < bonfThreshold) %>%
+  arrange(P)
+
+print(hweData %>% select(SNP, P, BonferroniSig))
+cat("\nBonferroni threshold:", format(bonfThreshold, scientific = TRUE), "\n")
+```
+
+## Results:
+
+I tested the Hardy-Weinberg equilibrium in controls only, using a Bonferroni-corrected significance threshold of 0.05/17 = 0.00294 to account for testing 17 SNPs. The HWE analysis was performed on 5,900 controls. None of the SNPs showed significant departure from HWE at the Bonferroni-corrected threshold. The smallest p-value observed was for rs17156153 at p = 0.091, which is nowhere near the significance threshold of 0.00294.
+
+## Interpretation:
+
+I chose to test HWE in controls only because including cases could create artificial HWE deviations if the SNPs are actually associated with disease—true disease-associated variants can possibly violate HWE because it involves mixing cases and controls. The fact that all SNPs pass the HWE check is good because it suggests that there is no major genotyping errors or serious population stratification issues affecting our data quality. Violations of HWE could indicate problems like genotyping errors, copy number variants messing up the assay, or hidden population structure. Since none of our SNPs show evidence of these problems, we can keep all of them in the analysis from an HWE perspective. However it is important to remember that we're still excluding rs10455872 and rs12625739 from subsequent analyses, because of their high missing rates from Question 2, not because of HWE issues. Relating to the question: no SNPs show departure from Hardy-Weinberg equilibrium at the Bonferroni-corrected threshold, so no SNPs need to be excluded based on HWE testing (though two SNPs are still excluded due to high missing rates).
+
+# Question 4: Significance Thresholds
+
+```{r}
+nSNPs <- 17
+alphaSnpAS <- 0.05 / nSNPs
+alphaSnpSPP <- 0.05 / nSNPs
+alphaRV <- 0.05
+
+cat(" part a: SNP-AS:", format(alphaSnpAS, scientific = FALSE), "\n")
+cat(" part b: SNP-SPP:", format(alphaSnpSPP, scientific = FALSE), "\n")
+cat(" part c: Rare variant:", alphaRV, "\n")
+```
+
+## Part a: Significance Level for SNP-AS Association Tests
+
+### Results:
+
+For the SNP association tests with AS, I calculated a Bonferroni-corrected significance threshold of 0.05/17 = 0.00294 (approximately 0.003).
+
+### Interpretation:
+
+For this situation I am using Bonferroni correction for the SNP-AS tests because we're performing 17 independent statistical tests, one for each SNP. Without any correction for multiple testing, the nominal type I error rate of 0.05 per test would give us about a 58% chance of getting at least one false positive across all 17 tests just by random chance. That's way too high if we want to control our family-wise error rate. The Bonferroni correction divides our desired family-wise error rate (0.05) by the number of tests (17), giving us 0.00294. This means that across all 17 SNP tests, we have only a 5% chance of making even one type I error. This is a pretty conservative value but standard approach in genetic association studies when testing multiple variants. The significance threshold for SNP-AS association tests is 0.00294.
+
+## Part b: Significance Level for SNP-SPP Association Tests
+
+### Results:
+
+For the SNP association tests with serum phosphate (SPP), I calculated the same Bonferroni-corrected significance threshold of 0.05/17 = 0.00294 (approximately 0.003).
+
+### Interpretation:
+
+For this situation i'm using the identical correction approach for SNP-SPP tests as I did for SNP-AS tests because we're again testing 17 SNPs, just with a different phenotype. The logic is exactly the same,     we need to control for the fact that we're doing multiple comparisons. Even though SPP is a continuous trait rather than a binary disease outcome like AS, the multiple testing problem is identical. We're still running 17 separate statistical tests, and without correction, we'd have an inflated type I error rate. The Bonferroni-corrected threshold of 0.00294 keeps our family-wise error rate at 5% across all the SPP association tests. This maintains consistency across our analysis and is appropriate given that we're testing the same set of SNPs for both phenotypes. The significance threshold for SNP-SPP association tests is 0.00294.
+
+## Part c: Significance Level for Rare Variant-AS Association Tests
+
+### Results:
+
+For the rare variant analysis with AS, I'm using an uncorrected significance threshold of 0.05 with no multiple testing adjustment.
+
+### Interpretation:
+
+For this situation I'm not applying multiple testing correction for the rare variant analysis even though we're technically using three different statistical methods, the burden test, SKAT, and SKAT-O. The key difference here is that these three approaches aren't really testing three independent hypotheses. Instead, they're all trying to answer the same fundamental biological question: are rare variants in the PALMD gene collectively associated with AS? The burden test assumes all variants push risk in the same direction, SKAT is more flexible and allows different variants to have opposite effects, and SKAT-O optimally combines both strategies to maximize power regardless of the true genetic architecture. But at the end of the day, it is important to remember that we are testing one gene-level hypothesis using complementary statistical approaches, not conducting three separate independent tests. A way to consider this situation is to imagine measuring the same thing but with different kinds of rulers. In this situation it would not make sense to correct for using multiple measurement tools when only measuring one thing. So using the standard alpha = 0.05 without correction is appropriate here because we're really just doing one test of PALMD rare variants with AS. The significance threshold for rare variant-AS association tests is 0.05.
+
+# Question 5: 
+ 
+```{r}
+nCases <- sum(Project858Data$AS1 == 2, na.rm = TRUE)
+nControls <- sum(Project858Data$AS1 == 1, na.rm = TRUE)
+nTotal <- nCases + nControls
+
+cat("Cases:", nCases, "Controls:", nControls, "\n")
+
+alphaSnpAS <- 0.05 / 17
+
+calcGeneticPower <- function(ncase, nctrl, maf, or, alpha = 0.05) {
+  nTotal <- ncase + nctrl
+  
+  varG <- 2 * maf * (1 - maf)
+  
+  logOR <- log(or)
+    ncp <- (logOR^2 * varG * ncase * nctrl) / nTotal
+  
+  zCrit <- qnorm(1 - alpha/2)
+  
+  power <- pnorm(sqrt(ncp) - zCrit) + pnorm(-sqrt(ncp) - zCrit)
+  
+  return(power)
+}
+
+SNPTesting <- data.frame(
+  SNP = c("rs59030006", "rs3901734"),
+  TrenkwalderOR = c(1.07, 1.13),
+  TrenkwalderP = c(1.34e-7, 5.92e-15)
+)
+
+SNPTesting$StudyMAF <- c(0.498, 0.250)
+
+SNPTesting$Power <- mapply(
+  calcGeneticPower,
+  ncase = nCases,
+  nctrl = nControls,
+  maf = SNPTesting$StudyMAF,
+  or = SNPTesting$TrenkwalderOR,
+  alpha = alphaSnpAS
+)
+
+SNPTesting$Adequate <- ifelse(SNPTesting$Power >= 0.80, 
+                               "Yes (greater than equal to 80%)", 
+                               "No (<80%)")
+
+cat("Study parameters:\n")
+cat(" N total:", nCases + nControls, "\n")
+cat(" Cases:", nCases, "\n")
+cat(" Controls:", nControls, "\n")
+cat(" Significance level (Bonferroni):", round(alphaSnpAS, 6), "\n\n")
+
+print(SNPTesting)
+```
+
+## Results:
+
+The power calculations used the following parameters: total sample size of 7,000 individuals with 1,100 cases and 5,900 controls, the Bonferroni-corrected significance level of 0.00294, the allele frequencies observed in our study (MAF = 0.498 for rs59030006 and MAF = 0.250 for rs3901734), and the effect sizes reported by Trenkwalder et al. (OR = 1.07 for rs59030006 and OR = 1.13 for rs3901734). For rs59030006, the calculated power was 6.5%. For rs3901734, the power was 24.4%. Both values fall well below the conventional 80% power threshold for adequate study design.
+
+## Interpretation: 
+
+These power calculations are not very good and gives us some discouraging results. While we have a reasonably large sample of 7,000 people, we're seriously underpowered to detect the associations reported by Trenkwalder. With only 6.5% power for rs59030006, we'd need to repeat this study about 15 times to have a decent shot at successfully replicating it once. For rs3901734 with 24.4% power, we're doing a bit better but still way below what's considered adequate. The fundamental problem is that the effect sizes for these SNPs are really modest—odds ratios of 1.07 and 1.13 are tiny effects, and reliably detecting them requires massive sample sizes, typically in the hundreds of thousands like modern GWAS consortia use. The practical implication of this information is that if we fail to replicate these SNPs in our analysis, we absolutely cannot conclude they're false positives. There is simply not enough adequate power to detect them in the first place. This means that the replication attempt is essentially inconclusive rather than informative, a negative result doesn't tell us much of anything. If the Trenkwalder findings are true and the effect sizes are similar in our population, we should not expect to be able to replicate these associations in our study due to insufficient statistical power.
+
+# Question 6: Power for SPP Association
+
+```{r}
+mafExample <- 0.3
+varG <- 2 * mafExample * (1 - mafExample)
+
+effectSizes <- data.frame(
+  Effect = c("Small", "Medium", "Large"),
+  BetaSD = c(0.05, 0.10, 0.20)
+)
+
+effectSizes$R2 <- (effectSizes$BetaSD * sqrt(varG))^2
+effectSizes$f2 <- effectSizes$R2 / (1 - effectSizes$R2)
+
+for (i in 1:nrow(effectSizes)) {
+  powerTest <- pwr.f2.test(u = 1, v = nTotal - 6, 
+                           f2 = effectSizes$f2[i], sig.level = alphaSnpSPP)
+  effectSizes$Power[i] <- powerTest$power
+}
+
+print(effectSizes)
+```
+
+## Results:
+
+Since the Trenkwalder paper didn't examine associations between these SNPs and serum phosphate, I don't have prior effect size estimates to use for power calculations. Instead, I calculated power across a range of plausible effect sizes—small (beta = 0.05 SD), medium (beta = 0.10 SD), and large (beta = 0.20 SD). I used an example minor allele frequency of 0.3. I used linear regression with 5 covariates (age, sex, hospital, CAD, and the SNP) at the Bonferroni-corrected significance threshold of 0.00294. For small effects (0.05 SD per allele), the power was 39.6%. For medium effects (0.10 SD per allele), power jumped to 99.3%. For large effects (0.20 SD per allele), power was essentially 100%.
+
+## Interpretation:
+
+These power calculations results tell us that we are pretty good for detecting meaningful associations with serum phosphate if they actually exist. With 99%+ power for medium-to-large effects, we're basically guaranteed to find any SNP that has a substantial impact on phosphate levels. Anything with an effect of 0.10 SD or larger per allele copy. However, we are underpowered for subtle associations around 0.05 SD, where we only have about 40% power. This is not that bad because it is actually a reasonable trade-off because in complex quantitative traits like serum phosphate, individual common variants typically have small effects, so we'll likely miss some of the weaker associations. But the ones we do find will represent loci with genuinely substantial biological influence on phosphate metabolism, which is scientifically valuable. If any of our SNPs move phosphate levels by 0.10 SD or more, we'll almost certainly detect them. The practical implication is that our study is well-powered for discovering the most impactful genetic variants affecting serum phosphate, even if we miss the variants with really small effects. Answering the question our study has adequate power (greater than equal too 80%) to detect medium and large effect sizes but is underpowered for small effects.
+
+# Question 7: 
+
+## Part a: 
+
+### Interpretation: 
+
+For the AS association analyses, I'm including age, sex, hospital site, and CAD status as covariates. Age and sex are standard demographic variables that need to be controlled for because age affects disease prevalence and sex can interact with genetic effects. These are almost always included in genetic association studies. Hospital site is really important here because we don't have principal components calculated yet (that would require genome-wide data), so hospital serves as a rough proxy for population structure. If the two hospital sites recruited from populations with different ancestry compositions. This data could provide us with some spurious associations just from population stratification. Hospital also controls for any systematic differences between sites in how people were recruited or how phenotypes were measured. CAD is included because Trenkwalder adjusted for it in their analysis, which suggests it might be correlated with AS or associated with ancestry. Leaving it out could introduce confounding and bias our results. To answer part a, I will use age, sex, hospital site, and CAD as covariates for SNP-AS association tests.
+
+## Part b: Covariates for SNP-SPP Associations
+
+### Interpretation:
+
+For the SPP association analyses, I'm using the exact same covariate set: age, sex, hospital site, and CAD. Age and sex definitely matter for a metabolic trait like serum phosphate because phosphate levels naturally change with age and differ between males and females due to hormonal and physiological differences. Hospital site again serves double duty. This is the proxy for population structure in the absence of principal components, and it also controls for potential systematic differences in how phosphate was measured between the two laboratory sites. Even small calibration differences between labs could cause there to be artificial associations if not controlled for. CAD is included partly for consistency with the AS model, but also because cardiovascular disease could plausibly be related to phosphate metabolism through shared biological pathways like vascular calcification. Using the same covariate set for both phenotypes will make it easier for our analyses more comparable and easier to interpret. To answer part b, I will use age, sex, hospital site, and CAD as covariates for SNP-SPP association tests.
+
+# Question 8: SNP Association with AS
+
+```{r}
+highMissingSNPs <- c("rs10455872", "rs12625739")
+
+write.table(
+  highMissingSNPs,
+  "/Users/adityamenon/Desktop/BS858/exclude_snps.txt",
+  quote = FALSE,
+  row.names = FALSE,
+  col.names = FALSE
+)
+
+cat("Created exclude_snps.txt with SNPs to exclude:\n")
+print(highMissingSNPs)
+
+cov <- read.table("/Users/adityamenon/Desktop/BS858/project.covar", header = TRUE)
+names(cov) <- c("FID", "IID", "Sex", "Age", "CAD", "Hospital")
+cov <- cov[, c("FID", "IID", "Age", "Sex", "Hospital", "CAD")]
+
+write.table(
+  cov,
+  "/Users/adityamenon/Desktop/BS858/project.covar",
+  quote = FALSE,
+  sep = "\t",
+  row.names = FALSE
+)
+
+plinkCmd <- paste(
+  "/Users/adityamenon/Desktop/BS858/plink_mac_20250819/plink",
+  "--file /Users/adityamenon/Desktop/BS858/project",
+  "--exclude /Users/adityamenon/Desktop/BS858/exclude_snps.txt",
+  "--covar /Users/adityamenon/Desktop/BS858/project.covar",
+  "--covar-name Age,Sex,Hospital,CAD",
+  "--logistic",
+  "--out /Users/adityamenon/Desktop/BS858/as_association_corrected"
+)
+
+system(plinkCmd)
+
+asAssoc <- read_table("/Users/adityamenon/Desktop/BS858/as_association_corrected.assoc.logistic", 
+                      show_col_types = FALSE)
+
+asResults <- asAssoc %>%
+  filter(TEST == "ADD") %>%
+  mutate(Significant = P < alphaSnpAS)
+
+cat("Number of SNPs analyzed:", nrow(asResults), "\n")
+cat("Expected: 15 (17 total - 2 high-missing)\n")
+
+if(any(asResults$SNP %in% highMissingSNPs)) {
+  cat(" WARNING: High-missing SNPs still present!\n")
+  cat("Present SNPs:", asResults$SNP[asResults$SNP %in% highMissingSNPs], "\n")
+} else {
+  cat("SUCCESS: High-missing SNPs successfully excluded\n")
+}
+
+cat("\n===========================================\n")
+cat("ASSOCIATION RESULTS (15 SNPs):\n")
+cat("===========================================\n")
+print(asResults %>% select(SNP, OR, P, Significant))
+
+trenkwalderAS <- data.frame(
+  SNP = c("rs55722102", "rs11166276", "rs61817379", "rs1256358", "rs62139062",
+          "rs10929458", "rs3901734", "rs59030006", "rs6813758", "rs7677751",
+          "rs7802307", "rs17156153", "rs11228502", "rs2869876", "rs11643207"),
+  RefOR = c(1.10, 1.16, 1.10, 1.09, 1.07, 1.09, 1.13, 1.07, 1.08, 1.11,
+            1.12, 1.07, 1.09, 1.10, 1.07),
+  RefP = c(4.34e-9, 3.24e-29, 4.86e-11, 6.35e-11, 1.08e-6, 1.67e-8, 5.92e-15,
+           1.34e-7, 1.50e-9, 4.34e-8, 3.67e-9, 3.65e-3, 3.98e-9, 1.55e-9, 2.54e-6)
+)
+
+comparisonAS <- asResults %>%
+  left_join(trenkwalderAS, by = "SNP") %>%
+  mutate(
+    DirectionMatch = case_when(
+      (OR > 1 & RefOR > 1) ~ "YES",
+      (OR < 1 & RefOR < 1) ~ "YES",
+      TRUE ~ "NO"
+    ),
+    Replicated = ifelse(Significant & DirectionMatch == "YES", "YES", "NO")
+  ) %>%
+  select(SNP, OR, RefOR, DirectionMatch, P, RefP, Significant, Replicated)
+
+cat("\n===========================================\n")
+cat("COMPARISON WITH TRENKWALDER ET AL.:\n")
+cat("===========================================\n")
+print(comparisonAS %>% select(SNP, OR, RefOR, DirectionMatch, P, Significant, Replicated))
+
+cat("\n===========================================\n")
+cat("REPLICATION SUMMARY:\n")
+cat("===========================================\n")
+nReplicated <- sum(comparisonAS$Replicated == "YES", na.rm = TRUE)
+nDirectionMatch <- sum(comparisonAS$DirectionMatch == "YES", na.rm = TRUE)
+cat("SNPs with same direction as Trenkwalder:", nDirectionMatch, "out of", nrow(comparisonAS), "\n")
+cat("SNPs that replicated (significant + same direction):", nReplicated, "out of", nrow(comparisonAS), "\n\n")
+
+cat("===========================================\n")
+cat("KEY SNPS OF INTEREST:\n")
+cat("===========================================\n\n")
+
+cat("TARGET SNP #1: rs59030006\n")
+rs59 <- asResults %>% filter(SNP == "rs59030006")
+if(nrow(rs59) > 0) {
+  cat("  Trenkwalder: OR = 1.07, p = 1.34×10^-7\n")
+  cat("  Our study:   OR =", round(rs59$OR, 3), ", p =", format(rs59$P, scientific = TRUE), "\n")
+  cat("  Direction match:", ifelse(comparisonAS$DirectionMatch[comparisonAS$SNP == "rs59030006"] == "YES", "YES", "NO (OPPOSITE)"), "\n")
+  cat("  Replicated:", ifelse(rs59$Significant, "YES", "NO"), "\n\n")
+}
+
+cat("TARGET SNP #2: rs3901734\n")
+rs39 <- asResults %>% filter(SNP == "rs3901734")
+if(nrow(rs39) > 0) {
+  cat("  Trenkwalder: OR = 1.13, p = 5.92×10^-15\n")
+  cat("  Our study:   OR =", round(rs39$OR, 3), ", p =", format(rs39$P, scientific = TRUE), "\n")
+  cat("  Direction match:", ifelse(comparisonAS$DirectionMatch[comparisonAS$SNP == "rs3901734"] == "YES", "YES", "NO"), "\n")
+  cat("  Replicated:", ifelse(rs39$Significant, "YES", "NO"), "\n\n")
+}
+
+if(any(comparisonAS$Significant)) {
+  cat("===========================================\n")
+  cat("SIGNIFICANT SNPs (p < 0.00294):\n")
+  cat("===========================================\n")
+  sigSNPs <- comparisonAS %>% filter(Significant)
+  print(sigSNPs %>% select(SNP, OR, P, RefOR, DirectionMatch))
+} else {
+  cat("No SNPs reached Bonferroni significance threshold\n")
+}
+```
+
+## Part a: 
+
+### Interpretation:
+
+For this question I am using an additive genetic model for the association tests, which works by assuming that each additional copy of the effect allele multiplies the disease odds by the same constant amount. This is implemented through logistic regression where the SNP is coded as 0, 1, or 2 copies of the effect allele. The additive model is the standard approach in GWAS for several reasons. This is because it tends to have good statistical power even when the true inheritance pattern isn't perfectly additive. It also provides interpretable effect sizes (the per-allele odds ratio), and it matches what Trenkwalder et al. used in their study. This means that it will be easier to preform direct comparison of our results with theirs. This also makes sense because common variant associations generally follow roughly additive patterns anyway. Relating to the question, I used an additive genetic model implemented through logistic regression.
+
+## Part b: 
+
+The code and output for this part is all above
+
+### Results:
+
+After excluding rs10455872 and rs12625739 due to high missing rates, I analyzed 15 SNPs for association with AS using logistic regression adjusted for age, sex, hospital site, and CAD. Only one SNP reached the Bonferroni significance threshold of 0.00294: rs11166276 with OR = 0.841 and p = 2.53×10^-4. When comparing with Trenkwalder et al., 7 out of 15 SNPs (47%) showed the same direction of effect, though none of these directionally consistent SNPs reached statistical significance. The two primary target SNPs showed the following results: rs59030006 had OR = 0.98 (p = 0.647) in our study compared to Trenkwalder's OR = 1.07 (p = 1.34×10^-7), and rs3901734 had OR = 1.03 (p = 0.573) compared to Trenkwalder's OR = 1.13 (p = 5.92×10^-15).
+
+### Interpretation:
+
+The one significant finding we got,rs11166276 is interesting because it wasn't highlighted as a top hit in Trenkwalder, and more importantly, it shows an opposite direction of effect (OR = 0.841, protective) compared to their finding (OR = 1.16, risk-increasing). This could represent either a genuine population-specific effect where this variant is protective in South Asians but harmful in Europeans, or it is also possible that it is a false positive that happened to cross our significance threshold by chance. Given that we're doing multiple comparisons and that this contradicts the original finding, the way to go about this is to be careful about interpreting this as a real effect without validation in an independent sample. The comparison table shows that most of our effect sizes are much weaker than Trenkwalder's and often in inconsistent directions, which aligns with our power calculations showing we're severely underpowered for these associations. Answering the question only one SNP (rs11166276) reached significance, but it showed an opposite direction of effect compared to the original study.
+
+## Part c: 
+
+### Results:
+
+Based on the criteria that replication requires both statistical significance at p < 0.00294 and the same direction of effect as the original study, zero out of 15 SNPs were successfully replicated. For the two main target SNPs: rs59030006 showed OR = 0.98 (p = 0.647) in our data versus Trenkwalder's OR = 1.07 (p = 1.34×10^-7), this result was not replicated due to the fact that the effect actually going in the opposite direction. rs3901734 showed OR = 1.03 (p = 0.573) versus Trenkwalder's OR = 1.13 (p = 5.92×10^-15), this is also not replicated, even though the direction is the same.
+
+### Interpretation:
+
+The complete failure to replicate isn't particularly surprising when considering the power calculations from Question 5. We only had 6.5% power for rs59030006 and 24.4% power for rs3901734, which means we had very little chance of detecting these associations even if they're completely real and have the same effect sizes in our population. The non-replication doesn't mean the Trenkwalder findings are wrong. This is more likely just reflects our inadequate statistical power combined with possible population differences in effect sizes or linkage disequilibrium patterns. The fact that only 47% of SNPs showed the same direction of effect as Trenkwalder provides weak. This suggests evidence that maybe there's some shared genetic architecture between European and South Asian populations for AS, but the lack of statistical significance means we can't draw strong conclusions. The one significant result we found (rs11166276) with an opposite direction will need external validation before we conclude it's a genuine population-specific protective variant. Answering part c, zero SNPs replicated in our sample when requiring both statistical significance and consistent direction of effect.
+
+# Question 9: 
+
+```{r}
+
+system("/Users/adityamenon/Desktop/BS858/plink_mac_20250819/plink --file /Users/adityamenon/Desktop/BS858/project --pheno /Users/adityamenon/Desktop/BS858/project.pheno --pheno-name STSPP --exclude /Users/adityamenon/Desktop/BS858/exclude_snps.txt --covar /Users/adityamenon/Desktop/BS858/project.covar --covar-name Age,Sex,Hospital,CAD --linear --out /Users/adityamenon/Desktop/BS858/spp_association")
+
+sppLinear <- read_table("/Users/adityamenon/Desktop/BS858/spp_association.assoc.linear",
+                        show_col_types = FALSE)
+
+sppResults <- sppLinear %>%
+  filter(TEST == "ADD") %>%
+  select(SNP, A1, BETA, P) %>%
+  mutate(
+    Z_Score = qnorm(1 - P/2),
+    SE = abs(BETA) / Z_Score,
+    CI_Lower = BETA - 1.96 * SE,
+    CI_Upper = BETA + 1.96 * SE,
+    Sig_Bonf = ifelse(P < alphaSnpSPP, "YES", "NO"),
+    P_Format = format(P, scientific = TRUE, digits = 3),
+    Interpretation = ifelse(BETA > 0, "Increases SPP", "Decreases SPP")
+  ) %>%
+  select(SNP, A1, BETA, CI_Lower, CI_Upper, P_Format, Sig_Bonf, Interpretation)
+
+cat("\n\nVerifying SNP exclusions:\n")
+cat("Number of SNPs analyzed:", nrow(sppResults), "\n")
+cat("Expected: 15 (17 total - 2 high-missing)\n")
+if(any(sppResults$SNP %in% c("rs10455872", "rs12625739"))) {
+  cat("WARNING: High-missing SNPs still present!\n")
+} else {
+  cat("SUCCESS: High-missing SNPs were successfully excluded\n")
+}
+
+sppLinear
+```
+
+## Part a: 
+
+### Interpretation:
+
+I used linear regression with an additive genetic model to test for associations between SNPs and standardized serum phosphate (STSPP), adjusting for age, sex, hospital site, and CAD. Linear regression is the appropriate statistical method here because STSPP is a continuous quantitative trait, and linear regression makes full use of the phenotype distribution rather than artificially dichotomizing it. This means that we are able to get more statistical power compared to treating phosphate as a binary trait. The additive model codes each SNP as 0, 1, or 2 copies of the effect allele, and the beta coefficient tells us the change in standardized serum phosphate (measured in standard deviation units) for each additional copy of the effect allele. Due to the fact that STSPP is already standardized, the beta coefficients are directly interpretable as effect sizes in SD units, which makes it easy to compare the magnitude of effects across different SNPs. Answering the question, I used linear regression with an additive genetic model, which is appropriate for continuous phenotypes like serum phosphate.
+
+## Part b: 
+
+### Results: 
+
+Three SNPs reached the Bonferroni significance threshold of p < 0.00294: rs11166276 with beta = -0.20 (95% CI: -0.23 to -0.17) and p = 2.12×10^-37, rs3901734 with beta = 0.071 (95% CI: 0.038 to 0.104) and p = 8.14×10^-5, and rs7802307 with beta = 0.102 (95% CI: 0.070 to 0.134) and p = 1.06×10^-10. All three associations showed highly significant p-values well below our threshold. Also to note for this example in order to be consistent with our quality control procedures from Question 2, we excluded rs10455872 and rs12625739 from this analysis due to their high missing rates (>5%), analyzing a total of 15 SNPs rather than the full set of 17.
+
+### Interpretation:
+
+These findings are really interesting because they represent new discoveries, the Trenkwalder paper didn't examine associations with serum phosphate at all, so that means that these are all new results. The effect sizes we're seeing are substantial: rs11166276 decreases serum phosphate by 0.20 standard deviations per copy of the C allele, which is a pretty large effect for a common variant. This is particularly notable because rs11166276 was also the one SNP that hit significance for AS in Question 8, which suggests possible pleiotropy where this genetic variant influences both AS risk and phosphate metabolism through some shared biological pathway. SNP rs3901734 increases phosphate by 0.071 SD per allele. It is important to note that this SNP didn't replicate for AS in our study, but it clearly has a real association with phosphate levels. rs7802307 increases phosphate by 0.102 SD per allele, which shows a moderate-to-large effect. The fact that we found three highly significant associations is completely consistent with our power calculations from Question 6, which predicted we'd have excellent power (99%+) to detect medium-to-large effects. The effect sizes we're observing (0.07 to 0.20 SD) are definitely within that range. The extremely small p-values (ranging from 10^-5 to 10^-37) give us strong confidence these are genuine biological effects rather than false positives. So based on all this to answer the question yes, three SNPs are significantly associated with serum phosphate, with effect sizes ranging from 0.071 to 0.20 standard deviations, which suggests that these loci play important roles in phosphate regulation.
+
+## Question 10: Rare Variant Association with AS
+
+```{r}
+rvCols <- paste0("RV.", 1:19)
+rvData <- Project858Data[complete.cases(Project858Data[, c("AS1", "age1", "sex1", 
+                                              "hospital", "CAD1", rvCols)]), ]
+
+rvData$burdenScore <- rowSums(rvData[, rvCols])
+print(summary(rvData$burdenScore))
+
+burdenModel <- glm((AS1 - 1) ~ burdenScore + age1 + sex1 + hospital + CAD1,
+                   data = rvData, family = binomial)
+
+burdenSummary <- summary(burdenModel)
+print(burdenSummary$coefficients)
+
+burdenCoef <- coef(burdenSummary)["burdenScore", ]
+burdenOR <- exp(burdenCoef["Estimate"])
+burdenP <- burdenCoef["Pr(>|z|)"]
+
+cat("\nBurden OR:", round(burdenOR, 3), "\n")
+cat("Burden P:", format(burdenP, scientific = TRUE), "\n")
+cat("Significant:", burdenP < alphaRV, "\n")
+
+Z <- as.matrix(rvData[, rvCols])
+y <- rvData$AS1 - 1
+X <- as.matrix(rvData[, c("age1", "sex1", "hospital", "CAD1")])
+
+objSkat <- SKAT_Null_Model(y ~ X, out_type = "D")
+skatResult <- SKAT(Z, objSkat)
+
+cat("\nSKAT P:", format(skatResult$p.value, scientific = TRUE), "\n")
+cat("Significant:", skatResult$p.value < alphaRV, "\n")
+
+skatoResult <- SKAT(Z, objSkat, method = "optimal.adj")
+cat("\nSKAT-O P:", format(skatoResult$p.value, scientific = TRUE), "\n")
+cat("Significant:", skatoResult$p.value < alphaRV, "\n")
+```
+
+## Summary Statistics
+
+```{r}
+cat("Total N:", nrow(Project858Data), "\n")
+cat("Cases:", sum(Project858Data$AS1 == 2), "\n")
+cat("Controls:", sum(Project858Data$AS1 == 1), "\n")
+cat("Prevalence:", round(mean(Project858Data$AS1 == 2), 3), "\n\n")
+
+cat("Age:\n")
+print(summary(Project858Data$age1))
+
+cat("\nSex:\n")
+print(table(Project858Data$sex1))
+
+cat("\nCAD:\n")
+print(table(Project858Data$CAD1))
+
+cat("\nHospital:\n")
+print(table(Project858Data$hospital))
+```
+
+## Part a: 
+
+### Interpretation:
+
+I used three complementary methods to test for rare variant associations with AS: a burden test, SKAT, and SKAT-O. The burden test collapses all 19 rare variants into a single genetic score by adding them up, then tests whether that cumulative score associates with AS. This way works best when all variants have effects in the same direction (either all protective or all risk-increasing). SKAT (Sequence Kernel Association Test) is more flexible because it can detect associations even when different rare variants have opposite effects or when only a subset of variants are actually causal. SKAT-O optimally combines the burden and SKAT approaches by finding the best weighted combination to maximize statistical power regardless of what the true underlying genetic architecture looks like. Using all three methods makes sense because we don't know ahead of time whether the PALMD rare variants all push risk in the same direction or have heterogeneous effects, so testing with complementary approaches increases our chances of detecting a true association if one exists. Answering the question, I used burden test, SKAT, and SKAT-O methods to comprehensively test for rare variant associations.
+
+## Part b: 
+
+### Results:
+
+The rare variant analysis produced null results across all three methods. The burden test yielded OR = 1.16 with p = 0.284 (not significant). SKAT produced p = 0.464 (not significant). SKAT-O produced p = 0.440 (not significant). Looking at the burden score distribution, the mean was only 0.056, which tells us that the vast majority of individuals carry zero rare variants, with only a small fraction carrying one or occasionally two variants.
+
+### Interpretation:
+
+None of the rare variant approaches show any evidence of association with AS at our alpha = 0.05 threshold. The extremely low mean burden score of 0.056 tells us that this is may be an issue because it means variant carriers are incredibly rare in our sample—most people have zero variants and only a tiny fraction have one or two. This is a serious limitation because rare variant tests need substantial numbers of carriers to have adequate statistical power. When individual variants are this uncommon, you typically need tens of thousands of samples to detect modest associations. There are several possible explanations for our null results: PALMD rare variants genuinely might not contribute to AS risk; we're severely underpowered due to the extremely low carrier frequency; the computational loss-of-function predictions might be wrong and these variants aren't actually disrupting protein function; or rare variants might only matter in specific genetic backgrounds or environmental contexts that we're not capturing with simple marginal association tests. The fact that all three methods (burden, SKAT, and SKAT-O) converge on null results with fairly similar p-values around 0.3-0.5 suggests this isn't just a power issue with one particular method. It is most likely that we are just not seeing any signal here at all. Given the low carrier frequency, we'd probably need a sample size of 50,000+ individuals to have decent power to detect rare variant associations with modest effect sizes. Answering the question, rare variants in PALMD are not significantly associated with AS in our study, though the extremely low variant carrier frequency severely limits our statistical power to detect associations.
+
+# Question 11: 
+
+## Part a: Replication Across Populations
+
+### Interpretation:
+
+Looking at Supplementary eTable 7 from the Trenkwalder study, they successfully replicated their findings across multiple European ancestry cohorts with pretty consistent effect sizes and directions. This internal replication within European populations is reassuring for the validity of their findings. However, our South Asian cohort tells a different story. We saw substantially different allele frequencies for several key SNPs like rs55722102, rs10929458, rs61817379, and rs11228502 compared to the European reference frequencies. This matters a lot because genetic associations don't always transfer cleanly across populations with different ancestry. The same SNP might tag completely different causal variants in different populations due to differences in linkage disequilibrium patterns that have evolved over thousands of years of separate population histories. There could also be genuine differences in effect sizes due to gene-environment interactions, this may be due to certain genetic variants only increase disease risk in the context of specific environmental exposures or dietary patterns that differ between populations. It is also possible that we could be population-specific genetic modifiers that change how a risk variant behaves. The fact that we couldn't replicate rs59030006 and rs3901734 might genuinely reflect real biological differences between European and South Asian populations rather than just being a power issue. This brings up a very important idea, the findings from GWAS conducted in European populations can't automatically be assumed to apply to South Asian, African, East Asian, or other ancestry groups. We need adequately powered genetic studies in diverse populations to understand whether genetic architecture is shared across humanity or varies by ancestry. The failure to replicate could be telling us very important information about the population-specific genetic effects.
+
+## Part b: Study Limitations
+
+### Interpretation:
+
+This study has several important limitations that affect how confidently we can interpret our findings. First and probably most importantly, we have serious power issues, we're severely underpowered to detect the modest effect sizes reported by Trenkwalder for the target SNPs, with only 6.5% and 24.4% power for rs59030006 and rs3901734 respectively. This means our failure to replicate doesn't actually tell us whether those associations are real or not; we just don't have the statistical power to detect them. 
+
+Second, we don't have genome-wide SNPs to calculate principal components for proper ancestry adjustment, so we're forced to use hospital site as a crude proxy for population structure. This is far from ideal and might not adequately control for hidden population stratification, which could give us false positives or cause us to miss true associations. 
+
+Third, we encountered some quality control inconsistencies in our analytic approach. We identified two SNPs (rs10455872 and rs12625739) with unacceptably high missing rates (71.4% and 42.9%, respectively) in Question 2 and appropriately excluded them from subsequent analyses. However, maintaining consistency in quality control procedures across all analyses is essential for methodological rigor. This highlights the importance of establishing and adhering to systematic quality control protocols at the outset of genetic association studies. In large-scale analyses with hundreds or thousands of SNPs, such consistency becomes even more critical to ensure the validity and reproducibility of findings. 
+
+Fourth, we're only examining a small amount of SNPs, 15 SNPs after quality control exclusions. This only represents a tiny slice of the total genetic variation associated with AS. We are missing the vast majority of potentially relevant variants. Plus, these specific SNPs might be tagging different haplotypes or causal variants in South Asians compared to Europeans due to different LD patterns. 
+
+Fifth, we had major genotyping quality problems with two SNPs showing missing rates of 42-71%. This forced us to exclude them and probably indicates broader issues with data quality that could affect our other results too. 
+
+Sixth, for the rare variant analysis, the burden score has an absurdly low mean of 0.056. This tells us that most people carry zero rare variants, when carriers are this rare, you will need absolutely massive sample sizes (probably 50,000+) to detect associations, and we clearly don't have that. We also only sequenced PALMD, so we're missing potentially important rare variants in other genes. 
+
+Seventh, we lack functional validation for our rare variants—they were predicted computationally to be loss-of-function, but we don't actually have experimental evidence that they disrupt protein function. Because of this we might be testing variants that don't actually do anything while missing real causal variants. 
+
+Eighth, serum phosphate can vary based on fasting status, time of day, medications, and lab assay differences, and with samples collected at two different hospitals, there could be systematic measurement differences we're not fully accounting for. 
+
+And ninth, there's multiple testing trade-offs that we have to consider: Bonferroni correction controls type I error but is probably overly conservative since many SNPs are in linkage disequilibrium and aren't truly independent tests, so we might be missing real associations by being too stringent. In future work, we'd need much larger sample sizes, genome-wide genotyping for proper population structure adjustment, sequencing of additional candidate genes beyond just PALMD, and functional validation of rare variants to definitively characterize the genetic architecture of AS and serum phosphate in South Asian populations. 
+
+Some other possible areas for importvement are sample composition because there was no explicit mention that this is from two tertiary hospitals which means that they may not be fully representative of general South Asian population. Also there was age range restrictions so 55-85 years may miss early-onset cases. Also it is important to remember that this used a cross-sectional design so it cannot establish temporality. And finally there may be some missing environmental exposures such Diet, smoking, other AS risk factors that were not measured.
+
+The above are just a few of the possible study limiations that may exist for this situation that should be conidered and accounted for. If we redid this study these are things that should be considered, looked at and adjusted if possible. 
+
+# Appendix: 
+
+```{r appendix, eval=FALSE, echo=TRUE}
+
+## ===============================
+## Question 1
+## Part a – Sibling Correlation & Heritability
+## ===============================
+## sppComplete <- Project858Data[complete.cases(Project858Data$STSPP1, Project858Data$STSPP2), ]
+## corSPP <- cor(sppComplete$STSPP1, sppComplete$STSPP2)
+## corTestSPP <- cor.test(sppComplete$STSPP1, sppComplete$STSPP2)
+## h2SPP <- 2 * corSPP
+## cat("Sibling correlation:", round(corSPP, 3), "\n")
+## cat("95% CI:", round(corTestSPP$conf.int, 3), "\n")
+## cat("P-value:", format(corTestSPP$p.value, scientific = TRUE), "\n")
+## cat("Heritability estimate (h²):", round(h2SPP, 3), "\n")
+
+## ===============================
+## Question 1
+## Part b – Familial Aggregation of AS
+## ===============================
+## asComplete <- Project858Data[complete.cases(Project858Data$AS1, Project858Data$AS2), ]
+## asTable <- table(Proband = asComplete$AS1 - 1, Sibling = asComplete$AS2 - 1)
+## orAS <- oddsratio(asTable, method = "wald")
+## Kpop <- mean(asComplete$AS1 - 1)
+## Krel <- sum(asComplete$AS2[asComplete$AS1 == 2] == 2) / sum(asComplete$AS1 == 2)
+## lambdaSib <- Krel / Kpop
+## cat("AS Prevalence:", round(Kpop, 3), "\n")
+## cat("Lambda sibling:", round(lambdaSib, 2), "\n")
+
+## ===============================
+## Question 2
+## Missingness & Allele Frequencies
+## ===============================
+## system("plink --file project --filter-controls --missing --freq --out missing_report")
+## system("plink --file project --missing --out project_all_missing")
+## freqControls <- read_table("missing_report.frq")
+## missingData <- read_table("project_all_missing.lmiss")
+## afSummary <- freqControls %>% select(SNP, MAF = MAF)
+## missingSnps <- missingData %>% select(SNP, F_MISS) %>% mutate(MissPct = F_MISS * 100)
+## snpsHighMiss <- missingSnps %>% filter(MissPct > 5)
+## refAF <- data.frame(SNP = c("rs10455872", "rs10929458", ...),
+##                     RefMAF = c(0.06, 0.69, ...))
+##
+## comparison <- afSummary %>% left_join(refAF, by = "SNP") %>%
+##   mutate(Diff = abs(MAF - RefMAF))
+
+## ===============================
+## Question 3
+## Hardy-Weinberg Equilibrium
+## ===============================
+## system("plink --file project --hardy --filter-controls --out hwe_controls")
+## hweData <- read_table("hwe_controls.hwe")
+## bonfThreshold <- 0.05 / 17
+## hweData <- hweData %>% mutate(BonferroniSig = P < bonfThreshold)
+
+## ===============================
+## Question 4
+## Significance Thresholds
+## ===============================
+## nSNPs <- 17
+## alphaSnpAS <- 0.05 / nSNPs
+## alphaSnpSPP <- 0.05 / nSNPs
+## alphaRV <- 0.05
+## cat("SNP-AS:", alphaSnpAS, "\n")
+## cat("SNP-SPP:", alphaSnpSPP, "\n")
+## cat("Rare variant:", alphaRV, "\n")
+
+## ===============================
+## Question 5
+## Power for SNP-AS Associations
+## ===============================
+## calcGeneticPower <- function(ncase, nctrl, maf, or, alpha = 0.05) { ... }
+## SNPTesting <- data.frame(SNP = c("rs59030006","rs3901734"),
+##                          TrenkwalderOR = c(1.07,1.13),
+##                          StudyMAF = c(0.498,0.250))
+## SNPTesting$Power <- mapply(calcGeneticPower, ncase=nCases, nctrl=nControls,
+##                            maf=SNPTesting$StudyMAF, or=SNPTesting$TrenkwalderOR,
+##                            alpha=alphaSnpAS)
+
+## ===============================
+## Question 6
+## Power for SNP-SPP Associations
+## ===============================
+## mafExample <- 0.3
+## varG <- 2 * mafExample * (1 - mafExample)
+##
+## effectSizes <- data.frame(Effect=c("Small","Medium","Large"),
+##                           BetaSD=c(0.05,0.10,0.20))
+##
+## effectSizes$R2 <- (effectSizes$BetaSD * sqrt(varG))^2
+## effectSizes$f2 <- effectSizes$R2 / (1 - effectSizes$R2)
+## for (i in 1:nrow(effectSizes)) {
+##   powerTest <- pwr.f2.test(u=1, v=nTotal-6, f2=effectSizes$f2[i], sig.level=alphaSnpSPP)
+##   effectSizes$Power[i] <- powerTest$power
+## }
+
+## ===============================
+## Question 7
+## Covariates
+## ===============================
+## cov <- read.table("project.covar", header=TRUE)
+## names(cov) <- c("FID","IID","Sex","Age","CAD","Hospital")
+## cov <- cov[,c("FID","IID","Age","Sex","Hospital","CAD")]
+## write.table(cov, "project.covar", sep="\t", quote=FALSE, row.names=FALSE)
+
+## ===============================
+## Question 8
+## SNP Association with AS
+## ===============================
+## highMissingSNPs <- c("rs10455872","rs12625739")
+## write.table(highMissingSNPs,"exclude_snps.txt",quote=FALSE,row.names=FALSE,col.names=FALSE)
+## plinkCmd <- paste("plink --file project --exclude exclude_snps.txt",
+##                   "--covar project.covar --covar-name Age,Sex,Hospital,CAD",
+##                   "--logistic --out as_association_corrected")
+## system(plinkCmd)
+## asAssoc <- read_table("as_association_corrected.assoc.logistic")
+## asResults <- asAssoc %>% filter(TEST=="ADD") %>% mutate(Significant = P < alphaSnpAS)
+
+## ===============================
+## Question 7
+## Covariates
+## ===============================
+## cov <- read.table("project.covar", header=TRUE)
+## names(cov) <- c("FID","IID","Sex","Age","CAD","Hospital")
+## cov <- cov[,c("FID","IID","Age","Sex","Hospital","CAD")]
+## write.table(cov,"project.covar",sep="\t",quote=FALSE,row.names=FALSE)
+
+## ===============================
+## Question 8
+## SNP Association with AS
+## ===============================
+## highMissingSNPs <- c("rs10455872","rs12625739")
+## write.table(highMissingSNPs,"exclude_snps.txt",quote=FALSE,row.names=FALSE,col.names=FALSE)
+## plinkCmd <- paste("plink --file project --exclude exclude_snps.txt",
+##                   "--covar project.covar --covar-name Age,Sex,Hospital,CAD",
+##                   "--logistic --out as_association_corrected")
+## system(plinkCmd)
+## asAssoc <- read_table("as_association_corrected.assoc.logistic")
+## asResults <- asAssoc %>% filter(TEST=="ADD") %>% mutate(Significant = P < alphaSnpAS)
+
+## ===============================
+## Question 9
+## SNP Association with Serum Phosphate (SPP)
+## ===============================
+## plinkCmdSPP <- paste("plink --file project --exclude exclude_snps.txt",
+##                      "--covar project.covar --covar-name Age,Sex,Hospital,CAD",
+##                      "--linear --out spp_association_corrected")
+## system(plinkCmdSPP)
+## sppAssoc <- read_table("spp_association_corrected.assoc.linear")
+## sppResults <- sppAssoc %>% filter(TEST=="ADD") %>% mutate(Significant = P < alphaSnpSPP)
+
+## ===============================
+## Question 10
+## Rare Variant Association (PALMD gene)
+## ===============================
+## rvData <- read.table("project_rv.ped", header=TRUE)
+## skatNull <- SKAT_Null_Model(AS ~ Age + Sex + Hospital + CAD, out_type="D")
+## burdenTest <- SKAT(rvData, skatNull, method="Burden")
+## skatTest <- SKAT(rvData, skatNull, method="SKAT")
+## skatOTest <- SKAT(rvData, skatNull, method="SKATO")
+## cat("Burden test p-value:", burdenTest$p.value, "\n")
+## cat("SKAT test p-value:", skatTest$p.value, "\n")
+## cat("SKAT-O test p-value:", skatOTest$p.value, "\n")
+## ===============================
+## Question 11
+## Rare Variant Association with Serum Phosphate (SPP)
+## ===============================
+## # Load rare variant genotype data
+## rvDataSPP <- read.table("project_rv.ped", header=TRUE)
+## # Null model for continuous trait (SPP)
+## skatNullSPP <- SKAT_Null_Model(SPP ~ Age + Sex + Hospital + CAD, out_type="C")
+## # Run Burden, SKAT, and SKAT-O tests
+## burdenSPP <- SKAT(rvDataSPP, skatNullSPP, method="Burden")
+## skatSPP   <- SKAT(rvDataSPP, skatNullSPP, method="SKAT")
+## skatOSP   <- SKAT(rvDataSPP, skatNullSPP, method="SKATO")
+## # Report results
+## cat("Burden test p-value (SPP):", burdenSPP$p.value, "\n")
+## cat("SKAT test p-value (SPP):", skatSPP$p.value, "\n")
+## cat("SKAT-O test p-value (SPP):", skatOSP$p.value, "\n")
+```

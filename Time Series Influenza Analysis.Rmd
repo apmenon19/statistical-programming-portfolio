@@ -1,0 +1,213 @@
+---
+title: "TSFinalProject5550"
+author: "Aditya Menon"
+date: "2025-04-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Part 1 - Introduction and Exploratory Data Analysis
+
+## Exploratory Data Analysis:
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(forecast)
+library(patchwork)
+Flu <- read_csv("~/Downloads/influenza_weekly.csv")
+FluUS <- Flu %>% filter(Country == "United States of America")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+p3 <- ggplot(FluUS, aes(x = SDATE, y = ALL_INF)) +
+  geom_line(color = "red") +
+  labs(title = "Weekly Flu Cases by Year", x = "Time (Year)", y = "Total Cases")
+
+p4 <- FluUS %>%
+  group_by(Year) %>%
+  summarise(total_influenza = sum(ALL_INF, na.rm = TRUE)) %>%
+  ggplot(aes(x = Year, y = total_influenza)) + 
+  geom_col(fill = "blue") + 
+  labs(title = "Flu Cases by Year", x = "Year", y = "Total Cases")
+
+gridExtra::grid.arrange(p3, p4, ncol = 2)
+```
+
+### Figure 1: The left panel shows the weekly trend in total influenza cases over time. The right panel shows the yearly values of the data set and displays the total reported influenza cases by their respective year.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+summary(FluUS$ALL_INF)
+```
+
+### Figure 2: Summary statistics for weekly influenza cases in the United States.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+FluUSTS <- ts(FluUS$ALL_INF, start = c(2004, 1), frequency = 52)
+
+par(mfrow = c(1, 2))
+acf(FluUSTS, main = "ACF: Flu Cases")
+pacf(FluUSTS, main = "PACF: Flu Cases")
+par(mfrow = c(1, 1))
+
+```
+
+### Figure 3: The left chart depicts the ACF and PACF values over the lag for the original dataset.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+LogFluUS <- log1p(FluUSTS)  
+DiffFluUS <- diff(LogFluUS)
+
+
+par(mfrow = c(1, 2))
+acf(DiffFluUS, main = "ACF: Differenced Log Flu Cases")
+pacf(DiffFluUS, main = "PACF: Differenced Log Flu Cases")
+par(mfrow = c(1, 1))
+```
+
+### Figure 4: Chart depicts the ACF and PACF for the transformed dataset. The chart on the left depicts the ACF for the differenced log flu cases and right chart depicts the PACF for the differenced log flu cases.
+
+# Part 2 - Models for Trend and Seasonality
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+OGDecomp <- stl(DiffFluUS, s.window = "periodic")
+
+SeasonalEffects1 <- OGDecomp$time.series[, "seasonal"]
+head(SeasonalEffects1)
+forecast::autoplot(OGDecomp) +
+  ggtitle("STL Decomposition of Flu Cases (USA)") 
+```
+
+## Figure 5: This plot shows the decomposition of the influenza time series into three main components trend, seasonality, and remainder.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+trend <- OGDecomp$time.series[, "trend"]
+seasonal <- OGDecomp$time.series[, "seasonal"]
+
+DeSeasonData <- FluUSTS - seasonal
+DetrendData <- DeSeasonData - trend
+DetrendDeseason <- FluUSTS - trend - seasonal
+
+DeSeasonp <- autoplot(DeSeasonData) + ggtitle("Deseasonalized Data")
+DeTrendp <- autoplot(DetrendData) + ggtitle("Detrended Data")
+
+DeSeasonp + DeTrendp
+```
+
+## Figure 6: The left chart shows the time series with the seasonal component removed. The right plot shows the time series without the trend and seasonal components. 
+
+
+```{r}
+ARMAModel1 <- Arima(DetrendData, order=c(1,0,1)) 
+ARMAModel2 <- Arima(DetrendData, order=c(2,0,2))  
+ARMAModel3 <- Arima(DetrendData, order=c(3,0,1))  
+
+checkresiduals(ARMAModel1)
+checkresiduals(ARMAModel2)
+checkresiduals(ARMAModel3)
+
+AIC(ARMAModel1, ARMAModel2, ARMAModel3)
+BIC(ARMAModel1, ARMAModel2, ARMAModel3)
+```
+
+
+## Figure 7: Three ARMA models were made by looking at the ACF and PACF and then residual and AIC/BIC values were calcualted for thos three models.  
+
+```{r}
+library(forecast)
+FitModel <- Arima(DetrendData, order=c(3,0,1))
+summary(FitModel)
+```
+
+## Figure 8: A summary was created for the selected model displaying relevant values.
+Based on this the model is 
+$$
+y_t = 1128.2406 + S_t + x_t, \quad
+x_t = 0.7104 y_{t-1} + 0.6364 y_{t-2} - 0.4606 y_{t-3} + 0.8657 \epsilon_{t-1} + \epsilon_t, \quad
+\epsilon_t \sim \text{i.i.d. } N(0, \sigma^2)
+$$
+
+
+
+```{r}
+DecompData2 <- stl(DetrendData, s.window = "periodic")
+plot(DecompData2)
+SeasonalEffects2 <- DecompData2$time.series[, "seasonal"]
+head(SeasonalEffects2)
+```
+
+## Figure 9: This plot shows the decomposition of the detrended and deseasonalized influenza time series into three main components trend, seasonality, and remainder.
+
+```{r}
+ForeHorizon <- 52
+ForeData <- forecast(FitModel, h = ForeHorizon)
+autoplot(ForeData) +
+  ggtitle("Forecast of Weekly Flu Cases (USA) with ARIMA(2,0,2)") +
+  xlab("Time (Year)") +
+  ylab("Predicted Weekly Flu Cases")
+
+ForeData
+```
+
+## Figure 10: The right plot shows the predicted weekly flu cases over time. The right chart shows the actual values for the point forecast and the high and low values for the 80 and 95 prediction intervals.
+
+
+# Question 3 - SARIMA Modeling:
+
+
+```{r}
+SARIMAA <- Arima(DiffFluUS, order=c(2,1,1), seasonal=c(0,1,1), lambda = NULL)
+SARIMAB <- Arima(DiffFluUS, order=c(3,1,1), seasonal=c(0,1,1), lambda = NULL)
+SARIMAC <- Arima(DiffFluUS, order=c(1,1,1), seasonal=c(0,1,1), lambda = NULL)
+
+AIC(SARIMAA, SARIMAB, SARIMAC)
+BIC(SARIMAA, SARIMAB, SARIMAC)
+
+checkresiduals(SARIMAA)
+checkresiduals(SARIMAB)
+checkresiduals(SARIMAC)
+
+BestSar <- SARIMAB
+
+summary(BestSar)
+```
+
+Figure 1: This table compares three different SARIMA models using residuals AIC, and BIC values. 
+
+
+```{r}
+coef(BestSar)
+
+AR <- coef(BestSar)[grep("^ar", names(coef(BestSar)))]  
+MA <- coef(BestSar)[grep("^ma", names(coef(BestSar)))]  
+SAR <- coef(BestSar)[grep("^seasonal", names(coef(BestSar)))] 
+
+AR
+MA
+SAR
+```
+
+Based on this, we can say that the final model is:  
+$$
+\left( 1 + 0.0058 B - 0.2215 B^2 - 0.1986 B^3 \right) (y_t) = \left( 1 + 1.0000 B + 0.7340 B^{52} \right) \epsilon_t, \quad \epsilon_t \sim \text{i.i.d. } N(0, \sigma^2)
+$$
+
+
+where B stands for the back shift operator, yt stands for the observed time series at time t and et stands for the white noise error term.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ForecastRes <- forecast(BestSar, h = 52)
+
+autoplot(ForecastRes) +
+  ggtitle("Forecast using Best SARIMA Model Based on ACF/PACF") +
+  xlab("Time") + ylab("Weekly Flu Cases")
+
+ForecastRes
+```
+
+## Figure 11: The right plot shows the predicted weekly flu cases over time. The right chart shows the actual values for the point forecast and the high and low values for the 80 and 95 prediction intervals.
+

@@ -1,0 +1,296 @@
+---
+title: "Project1_Stat4194"
+author: "Aditya Menon"
+date: "2025-02-14"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Part a:
+
+```{r, include=FALSE} 
+library(readr)
+library(ggplot2)
+library(dplyr)
+
+draftdata <- read_csv("~/Downloads/combined_data_2000-2023.csv")
+```
+
+## Requirements of the data set: This data set is well-suited for analysis based on the given criteria due to the following reasons:
+
+Size: The data set contains 12,629 total entries, which exceeds the required 50 data points.
+
+Categorical Predictor:
+The data set includes the variable "team", which represents the NFL team that drafted the player. With 32 total teams in the NFL, this far exceeds the minimum requirement of three levels.
+Another categorical variable, "position", includes multiple possible offensive and defensive positions.
+In addition the variable "rd" represents in what round the player is draft in, this is an example of an ordinal categorical variable, with 7 total possible rounds this far exceeds the required three levels.
+
+Continuous Predictors:
+The data set includes the following continuous variables:
+"games played" (g) – Represents the total number of career games a player has played.
+"total contract value" (value) – Represents the total monetary value of a player’s contract at signing.
+"guaranteed contract value" (gtd) – Represents the amount of money guaranteed in a player's contract.
+
+Dependent Variable (Continuous, Binary, or Count):
+The data set has multiple dependent variables, including:
+"total contract value" – A continuous variable representing salary.
+"guaranteed contract value" – Represents the amount of money the player is guaranteed to receive from their contract.
+"games played" – A count variable representing career longevity.
+This data set provides a lot of valuable data that will be helpful for exploring trends in the NFL draft and player contracts.
+
+## Information about the data set:
+The NFL Draft is an annual event in which teams select college football players to join the professional league. The draft order is determined by team performance from the previous season, with weaker teams picking first to maintain competitive balance. The draft has a total of seven rounds, with 32 picks per round. The contracts players sign after the draft can vary significantly based on draft position, player potential, and team salary cap considerations. Early round picks typically receive higher salaries and more guaranteed money, while later round selections often sign lower value or non guaranteed deals. This however can vary and this data set is focused on helping looking at that trend. By going through and analyzing this data set we can discover trends in player earnings, length of career, and deduce what teams should look for when drafting.
+
+The variable names are:
+```{r}
+colnames(draftdata)
+```
+The variables value_norm and gtd_norm represent the players contract amount and guaranteed contract amount normalized to the NFL salary cap of that year to better compare these values across the years when inflation and other factors could be a major influence. 
+
+## Potential Analysis & Insights:
+This data set can be used to to examine the relationship between variables such as draft position, career performance, and finances in the NFL. Someresearch questions that could be explored by looking and analyzing the data are:
+
+How does draft position impact contract value?
+Do first-round picks have longer careers compared to later-round selections?
+Which positions tend to receive the highest guaranteed contracts?
+How have NFL contract values changed over time?
+
+
+
+# Part b:
+
+```{r, include = FALSE}
+chooseCRANmirror(graphics = FALSE, ind = 1)
+library(tidyverse)
+install.packages("corrplot")
+library(corrplot)
+```
+
+```{r}
+summary(draftdata)
+```
+
+```{r, include=FALSE} 
+PickContract<- ggplot(draftdata, aes(x = pick, y = value / 10^6)) +
+  geom_point(alpha = 0.6, color = "black") +
+  geom_smooth(method = "lm", color = "red", linetype = "solid") +
+  labs(title = "Draft Pick vs. Contract Value", x = "Draft Pick Number", y = "Contract Value ($ Millions)") 
+```
+```{r}
+PickContract
+```
+
+```{r, include=FALSE} 
+PositionContract <- ggplot(draftdata, aes(x = pos, y = value / 10^6)) + 
+  geom_boxplot(fill = "blue", color = "black", alpha = 0.7) + 
+  labs(title = "Position vs. Contract Value", 
+       x = "Player Position", 
+       y = "Contract Value ($ Millions)") 
+```
+```{r}
+PositionContract
+```
+
+```{r, include = FALSE} 
+DraftContractGames <- ggplot(draftdata, aes(x = pick, y = gtd / 10^6, color = g)) + 
+  geom_point(alpha = 0.7) + 
+  geom_smooth(method = "lm", color = "black", linetype = "solid") + 
+  scale_color_gradient(low = "lightblue", high = "blue") + 
+  labs(title = "Draft Pick vs. Guaranteed Money and Games Played", 
+       x = "Draft Pick Number", 
+       y = "Guaranteed Money ($ Millions)", 
+       color = "Games Played") 
+```
+```{r}
+DraftContractGames
+```
+
+```{r, include=FALSE} 
+DDNum <- draftdata %>%
+  select(where(is.numeric))
+
+CorrMatrix <- cor(DDNum, use = "complete.obs")
+```
+```{r}
+print(CorrMatrix)
+```
+
+# Part c:
+
+Linear Regression Model for Contract Value as the dependent variable and the pick number, player position, draft year and round as the independent variables:
+
+```{r, include=FALSE} 
+CVModel <- lm(value ~ pick + pos + draft_year + rnd, data = draftdata)
+```
+```{r} 
+summary(CVModel)
+```
+
+Multiple regression model for guaranteed contract value as the dependent variable and pick number, team, position, year signed as the independent variable.
+
+```{r, include =FALSE} 
+ModelGV <- lm(gtd ~ pick + tm + pos + year_signed, data = draftdata)
+```
+```{r}  
+summary(ModelGV)
+```
+
+
+# Part d:
+
+## Diagnostic Plots for Contract Value Model (CVModel)
+```{r, include=FALSE} 
+residuals_CVmillion <- residuals(CVModel) / 10^6
+fitted_CVmillion <- fitted(CVModel) / 10^6
+
+FitCV<-ggplot(data = data.frame(fitted_CVmillion, residuals_CVmillion), 
+       aes(x = fitted_CVmillion, y = residuals_CVmillion)) +
+  geom_point(color = "red", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "black", linetype = "solid") +
+  labs(title = "Residuals vs Fitted for CVModel (in Millions)", 
+       x = "Fitted Values (in Millions)", 
+       y = "Residuals (in Millions)") 
+```
+
+```{r}
+FitCV
+```
+The Residuals vs. Fitted Plot shows a funnel-like shape, where the residuals become more spread out as the fitted values increase. This indicates heteroscedasticity, meaning the variance of the residuals is not constant across all levels of the predicted values. Heteroscedasticity might suggest that this analysis is not reliable because it violates the assumption of homoscedasticity the idea of having equal variance across all the residuals.
+
+```{r, include=FALSE} 
+ResCV <-ggplot(data = data.frame(residuals_CVmillion), aes(sample = residuals_CVmillion)) +
+  geom_qq() +
+  geom_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot for CVModel (in Millions)") 
+```
+
+```{r}
+ResCV
+```
+
+In the Q-Q Plot the residuals are mostly aligned with the straight line from x-values of 0 to -4, suggesting that they are normally distributed within this range. However, the line deviates significantly for larger x-values, indicating that the residuals are right-skewed. This suggests the model may not capture the data distribution well for larger residual values, which could affect the overall accuracy of predictions and inferences made based on the data.
+
+```{r, include=FALSE} 
+HResCV <- ggplot(data = data.frame(residuals_CVmillion), aes(x = residuals_CVmillion)) +
+  geom_histogram(binwidth = 0.5, fill = "red", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Residuals for Contract Value Model (in Millions)", 
+       x = "Residuals (in Millions)", 
+       y = "Frequency") 
+
+```
+
+```{r}
+HResCV
+```
+
+The Histogram of Residuals shows the distribution of residuals and is helpful when trying to look at the normality assumption. The histogram appears to have a slight right skew, suggesting that the residuals are not perfectly normally distributed. While the distribution is somewhat symmetrical in the center, the tail on the right side indicates that there might be some outliers or skewness within the data. This assumptions means there may be issues when trying to use this data to make predictions because this graph suggests that that the errors may not be random and could be systematically influenced by other factors not captured within the model.
+
+## Diagnostic plots for ModelGV:
+
+```{r, include=FALSE} 
+residuals_GVmillion <- residuals(ModelGV) / 10^6
+fitted_GVmillion <- fitted(ModelGV) / 10^6
+
+FitGV <- ggplot(data = data.frame(fitted_GVmillion, residuals_GVmillion), 
+       aes(x = fitted_GVmillion, y = residuals_GVmillion)) +
+  geom_point(color = "black", alpha = 0.6) +
+  geom_smooth(method = "lm", color = "red", linetype = "solid") +
+  labs(title = "Residuals vs Fitted for Guranteed Value model (in Millions)", 
+       x = "Fitted Values (in Millions)", 
+       y = "Residuals (in Millions)")
+```
+
+```{r}
+FitGV
+```
+
+In the Residuals vs. Fitted plot for Model GV, there is considerable variability in the residuals as the fitted values increase. This suggests that as the model predicts higher values, the errors become larger which seems to indicate the presence of heteroscedasticity where variability of the errors is not constant across all levels of the fitted values. This variability seems to be larger in this model than the earlier CV model.
+
+```{r, include=FALSE} 
+ResGV <- ggplot(data = data.frame(residuals_GVmillion), aes(sample = residuals_GVmillion)) +
+  geom_qq() +
+  geom_qq_line(color = "red") +
+  labs(title = "Normal Q-Q Plot for ModelGV (in Millions)") 
+```
+
+```{r}
+ResGV
+```
+The QQ plot for this model shows that while the residuals align reasonably well with the normality line for lower fitted values, they increasingly deviate as the fitted values grow. This deviation suggests that the residuals are not normally distributed, especially for thelarger values. This plot is similar to the last model however it does seems to stray away at a steeper slope.
+
+```{r, include=FALSE} 
+HResGV <- ggplot(data = data.frame(residuals_GVmillion), aes(x = residuals_GVmillion)) +
+  geom_histogram(binwidth = 0.5, fill = "red", color = "black", alpha = 0.7) +
+  labs(title = "Histogram of Residuals for ModelGV (in Millions)", 
+       x = "Residuals (in Millions)", 
+       y = "Frequency")
+```
+
+```{r}
+HResGV
+```
+
+The Histogram of residuals has a pronounced right skew, with a larger tail, which seems to suggest that the model has a tendency to under predict for higher values. The distribution shows more outlines compared to the previous model, with values spreading farther along the right side. This indicates the presence of extreme residuals that may impact the model's accuracy.
+
+```{r, include = FALSE}
+chooseCRANmirror(graphics = FALSE, ind = 1)
+install.packages("car")
+library(car)
+library(stats)
+```
+
+```{r}
+vif(CVModel)
+```
+
+```{r}
+vif(ModelGV)
+```
+
+The Variance Inflation Factor (VIF) is useful for measuring multicollinearity in a model. Based on the above calculations in the first model related to contract value, the variables pick and round have very high GVIF values, indicating strong multicollinearity. In contrast, pos and draft_year have low GVIF values, suggesting that there is minimal concern for multicollinearity. For the second model, which focuses on guaranteed contract values, the variables pick, position, and year_signed do not exhibit significant multicollinearity.
+This analysis implies that the first model contains variables with severe multicollinearity, which should be addressed through variable selection, transformation, or different modeling techniques to improve the model’s overall reliability.
+
+```{r, include = FALSE}
+aicCV <- AIC(CVModel)
+bicCV <- BIC(CVModel)
+
+aicGV <- AIC(ModelGV)
+bicGV <- BIC(ModelGV)
+```
+
+```{r}
+cat("Model 1: AIC =", aicCV, ", BIC =", bicCV, "\n")
+cat("Model 2: AIC =", aicGV, ", BIC =", bicGV, "\n")
+```
+
+By comparing the BIC and AIC we can look at which model has a better overall fit, model GV has a lower AIC which means that it has a better fit when looking at the models complexity. The GV model has the lower BIC which means it is more preferable when accounting for both the fit and the overall model simplicity. Due to the fact that the GV model has a smaller AIC and BIC so it has a better balanced fit and overall complexity and is the better model to use.
+
+
+# Part e:
+
+The analysis of NFL draft positions and player contracts, spanning data from 2000 to 2023, focused on total contract values and guaranteed money to explore the factors impacting player compensation. The findings strongly suggest that draft position plays a significant role in contract values, with players selected earlier in the draft typically receiving much larger contracts. Players drafted later tend to earn about $30,016 less in total contract value and $43,456 less in guaranteed money for each spot they fall in the draft (p < 0.01 for total value and p < 0.001 for guaranteed money). This makes sense because it aligns with the idea that teams invest more in players they believe have higher potential, which they would draft earlier.
+
+The data also reveals that certain positions command higher compensation, regardless of their draft position. Quarterbacks are by far the highest-paid players, earning $6.61 million more in total contract value (p < 0.001) and $5.37 million more in guaranteed money (p < 0.001) compared to players in other positions. Conversely, running backs receive significantly less—about $2.93 million less in total contract value (p < 0.01) and $1.62 million less in guaranteed money (p < 0.05). This can be associated with the notion that running backs generally have a shorter career span and are seen as easily replaceable. Defensive backs also show moderate negative effects, with $2.45 million less in total contract value (p < 0.05) and slightly lower guaranteed money. These position based differences in compensation are statistically significant and highlight the importance of position value when it comes to contract negotiations.
+
+In addition to draft position and player roles, the analysis highlighted significant differences across teams in terms of how they allocate guaranteed money. The Los Angeles Chargers offered an average of $3.66 million more in guaranteed money than other teams (p < 0.001), while the Los Angeles Rams and New Orleans Saints also provided notably higher guarantees ($2.05 million, p < 0.05, and $1.78 million, p < 0.01, respectively). Teams like the Philadelphia Eagles, Seattle Seahawks, and other teams showed varying levels of investment in guaranteed money, suggesting that organizational philosophies vary when it comes to player investment and risk management.
+
+The analysis shows that the draft year has a significant negative effect on total contract value, with each subsequent year seeing a reduction of $230,510 in contract value (p < 0.001). However, the year signed seemed to have no significant effect on guaranteed money (p = 0.34), indicating that the market for guaranteed money is less sensitive to when the contract is signed.
+
+The practical implications of these findings are crucial for NFL teams. The steep decline in both total and guaranteed money with draft position suggests teams should carefully evaluate the cost-benefit ratio of trading up versus trading down. While early draft picks require significantly larger contracts, they also offer higher potential value. Teams might consider trading down to acquire multiple later picks if their needs align more with filling several roster spots and saving money. Additionally, the position a player plays is critical in determining their contract value, and teams should factor in market values for specific positions when making draft decisions. The quarterback premium seems to be statistically justified, while the lower compensation for running backs suggests teams should carefully consider when and how much a team wants to invest in a player in this position.
+
+The models, however, explained only 12.3% and 13.6% of the variance in total contract value (R-squared = 0.1232) and guaranteed money (R-squared = 0.1361), respectively, with both models being statistically significant (p-value < 2.2e-16). Overall the models should be improved evident by the fact that the qq plots strayed from normality, model one had a high VIF value, and the histograms did not suggest normality because of their right skewness. This implies that other important factors such as player performance, team salary cap situation, and market conditions play a significant role in contract negotiations. These models also struggled to predict the highest-paid contracts, depicting that draft position alone is not the only factor teams should consider. This means that teams must balance the cost of early draft picks with their potential value while also considering position specific needs, market conditions, and overall team philosophies. With these ideas, teams can make more informed decisions regarding both draft strategies and salary cap management, which would help them manage contract negotiations more effectively and build the best team possible.
+
+
+# Sources:
+
+https://www.kaggle.com/datasets/nicholasliusontag/nfl-contract-and-draft-data,
+
+https://r4ds.had.co.nz
+
+
+
+

@@ -1,0 +1,263 @@
+---
+title: "Stat4302Final"
+author: "Aditya Menon"
+date: "2025-04-23"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Question 1
+
+```{r}
+library(tidyverse)
+library(boot)
+
+FishLengths <- read_table("~/Downloads/fish_lengths.txt", col_names = FALSE)
+colnames(FishLengths) <- "Length_cm"
+View(FishLengths)
+
+pharynx <- read_table("~/Downloads/pharynx.txt", skip = 4, col_names = FALSE)
+colnames(pharynx) <- c("CASE", "INST", "SEX", "TX", "GRADE", "AGE", "COND", 
+                       "SITE", "T_STAGE", "N_STAGE", "ENTRY_DT", "STATUS", "TIME")
+```
+
+## Part a
+
+```{r}
+SurvivalTime <- pharynx$TIME
+
+summary(SurvivalTime)
+sd(SurvivalTime)
+
+hist(SurvivalTime, main = "Histogram of Survival Time", xlab = "Days", col = "red", breaks = 20)
+
+boxplot(SurvivalTime, main = "Boxplot of Survival Time", horizontal = TRUE, col = "blue")
+```
+
+## Part b
+
+The jackknife method is not recommended in this case for calculating the standard error for the median because the median is highly sensitive to changes in the data because the median is a non smooth estimator. The jackknife method relies on deleting one observation at a time, which would cause large variations within the computed median, leading to an unreliable SE.
+
+
+```{r}
+set.seed(142)
+
+BSMed <- function(data, B = 1000) {
+  n <- length(data)
+  medians <- replicate(B, median(sample(data, n, replace = TRUE)))
+  return(medians)
+}
+
+MedBoot <- BSMed(SurvivalTime, B = 1000)
+
+MedEst <- median(SurvivalTime)
+BootSSE <- sd(MedBoot)
+
+cat("Bootstrap Median Estimate:", MedEst, "\n")
+cat("Bootstrap SE:", BootSSE, "\n")
+```
+
+## Part c
+
+
+```{r}
+Prop1610 <- mean(SurvivalTime > 1610)
+n <- length(SurvivalTime)
+
+z <- qnorm(0.995)
+se <- sqrt((Prop1610 * (1 - Prop1610)) / n)
+CINorm <- c(Prop1610 - z * se, Prop1610 + z * se)
+
+cat("Proportion > 1610:", Prop1610, "\n")
+cat("99% Normal CI:", CINorm, "\n")
+```
+The problem with the confidence interval calculated in this way is that it assumes the proportion follows a normal distribution, which may not be true, especially if the sample size is small or the proportion is near 0 or 1. The normal CI may have values that are less than 0 or greater then 1 which makes this unrelaible when teh proportions are values near 0 or 1.
+
+## Part d
+
+```{r}
+BData <- as.numeric(SurvivalTime > 1610)
+
+BSProp <- function(data, B = 1000) {
+  n <- length(data)
+  props <- replicate(B, mean(sample(data, n, replace = TRUE)))
+  return(props)
+}
+
+set.seed(142)
+BOProps <- BSProp(BData, 1000)
+
+CIBS <- quantile(BOProps, c(0.005, 0.995))
+
+hist(BOProps, col = "red", main = "Bootstrap Distribution of Proportion > 1610",
+     xlab = "Proportion")
+
+cat("99% Bootstrap Percentile CI:", CIBS, "\n")
+```
+
+By using the bootstrap distribution directly it is able to avoid problems associated with normal based CI.
+
+## Part e
+
+```{r}
+smaller <- SurvivalTime[pharynx$T_STAGE %in% c(1, 2)]
+larger <- SurvivalTime[pharynx$T_STAGE %in% c(3, 4)]
+
+summary(smaller)
+summary(larger)
+boxplot(smaller, larger, names = c("Smaller Tumor", "Larger Tumor"),
+        main = "Survival by Tumor Size", col = c("blue", "red"))
+
+OBSStary <- median(smaller) - median(larger)
+
+PermTest <- function(group1, group2, B = 1000) {
+  combined <- c(group1, group2)
+  n1 <- length(group1)
+  
+  PermStats <- replicate(B, {
+    shuffled <- sample(combined)
+    median(shuffled[1:n1]) - median(shuffled[(n1+1):length(combined)])
+  })
+  
+  return(PermStats)
+}
+
+set.seed(142)
+PermDist <- PermTest(smaller, larger, B = 5000)
+
+hist(PermDist, col = "blue", main = "Permutation Distribution of Median Difference",
+     xlab = "Difference in Median Survival Time")
+abline(v = OBSStary, col = "red", lwd = 2)
+
+Pval <- mean(abs(PermDist) >= abs(OBSStary))
+
+cat("Observed Difference in Medians:", OBSStary, "\n")
+cat("Permutation p-value:", Pval, "\n")
+```
+
+Null Hypothesis: The median survival time for smaller tumors is the same as for larger tumors.
+
+Alternative Hypothesis: The median survival time for smaller tumors is different from that for larger tumors.
+
+Interpretation: Patients with smaller tumors have a higher median survival of 637 days compared to 399.5. Also the mean is higher than comapred to those with larger tumors. The large tumor group also shows a left skew which is a sign hat there were some people who did not survival very long, enough where the majority of the data leans that way.
+
+T stat is equal to the difference in means so median(small) minus the median(large) which is equal to 637 - 399.5 equal to 237.5
+
+The p value is less than 0.05 so we reject the null hypothesis and conclude that the median survival times do differ significantly between small and large tumors. This means that the data shows that there is evidence that patients with smaller tumors tend to survive significantly longer than those with larger tumors.
+
+# Question 2
+
+## Part a
+
+We know \( X = \{x_1, x_2, \dots, x_n\} \) follows a mixture of two normal distributions so based on this the probability density function for each data point \( x_i \) can be represented by 
+
+\[f(x_i; p_1, \mu_1, \sigma_1^2, \mu_2, \sigma_2^2) = p_1 \cdot \mathcal{N}(x_i; \mu_1, \sigma_1^2) + (1 - p_1) \cdot \mathcal{N}(x_i; \mu_2, \sigma_2^2)\]
+
+Where \( \mathcal{N}(x_i; \mu, \sigma^2) \) represents the normal probability density function:
+
+\[\mathcal{N}(x_i; \mu, \sigma^2) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp \left( -\frac{(x_i - \mu)^2}{2\sigma^2} \right)\]
+
+This means that likelihood for the dataset is:
+
+\[L(p_1, \mu_1, \mu_2, \sigma_1^2, \sigma_2^2; X) = \prod_{i=1}^n \left[ p_1 \cdot \mathcal{N}(x_i; \mu_1, \sigma_1^2) + (1 - p_1) \cdot \mathcal{N}(x_i; \mu_2, \sigma_2^2) \right]\]
+
+To get log likelihood we need to take the natural log and we get
+
+\[\log L(p_1, \mu_1, \mu_2, \sigma_1^2, \sigma_2^2; X) = \sum_{i=1}^n \log \left[ p_1 \cdot \frac{1}{\sqrt{2\pi \sigma_1^2}} \exp \left( -\frac{(x_i - \mu_1)^2}{2\sigma_1^2} \right) + (1 - p_1) \cdot \frac{1}{\sqrt{2\pi \sigma_2^2}} \exp \left( -\frac{(x_i - \mu_2)^2}{2\sigma_2^2} \right) \right]\]
+
+This is the final log likelihood function for the mixture of two normal distribution  where \( p_1 \) stands the proportion of the first normal distribution, \( \mu_1 \) and \( \sigma_1^2 \) stand for the mean and variance of the first normal distribution, and \( \mu_2 \) and \( \sigma_2^2 \) stand for the mean and variance of the second normal distribution.
+
+
+## Part b 
+
+```{r}
+negative.logl.mixnorm <- function(theta, x) {
+mu1 <- theta[1]   
+p1  <- theta[2]  
+  
+mu2 <- 33      
+sigma <- 2.8      
+var <- sigma^2
+
+f1 <- dnorm(x, mean = mu1, sd = sigma)
+f2 <- dnorm(x, mean = mu2, sd = sigma) 
+
+  likelihood <- p1 * f1 + (1 - p1) * f2
+
+  return(-sum(log(likelihood)))
+}
+```
+
+## Part c
+
+```{r}
+hist(FishLengths$Length_cm, 
+     col = "blue", 
+     main = "Histogram of Fish Lengths", 
+     xlab = "Fish Length (cm)", 
+     border = "white")
+```
+
+The data shows a spread that does not have a skew, with a balance and emphasis on the middle values. The peak is around 32 cm, with the data gradually decreasing as the values get smaller or larger. The max seems be a value close to 45 and the min is a value close to 15. The majority of the fish data points are present between 25 and 25 centimeters. 
+
+## Part d
+
+```{r}
+choices <- list(
+  c(20, 0.3),
+  c(25, 0.3),
+  c(25, 0.5)
+)
+
+for (i in 1:length(choices)) {
+  ll <- negative.logl.mixnorm(choices[[i]], FishLengths$Length_cm)
+  cat(sprintf("Choice %d: mu1 = %.1f, p1 = %.1f => Neg Log-Likelihood = %.4f\n",
+              i, choices[[i]][1], choices[[i]][2], ll))
+}
+
+```
+
+Looking at the negative loglikelihood values, Choice 2 with values mu1 = 25.0 and p1 = 0.3 makes the lowest value log likelihood of 457.5391. Because a lower negative log likelihood indicates a better overall fit to the data. Based on this Choice 2 is the best model among the three.
+
+## Part e
+
+```{r}
+negative.logl.mixnorm <- function(theta, x) {
+  mu1 <- theta[1]   
+  p1  <- theta[2]  
+
+  mu2 <- 33         
+  sigma <- 2.8    
+  var <- sigma^2
+
+  f1 <- dnorm(x, mean = mu1, sd = sigma)  
+  f2 <- dnorm(x, mean = mu2, sd = sigma)  
+  likelihood <- p1 * f1 + (1 - p1) * f2   
+  return(-sum(log(likelihood)))  
+}
+
+OPRes <- optim(
+  par = c(25, 0.3),  
+  fn = negative.logl.mixnorm, 
+  x = FishLengths$Length_cm, 
+  method = "L-BFGS-B", 
+  lower = c(0, 0.05),  
+  upper = c(50, 0.95)  
+)
+
+
+OPRes$par  
+OPRes$value  
+```
+
+Looking at the output values, the mu1 value tells us that the estimate of the mean length for female fish is 27.06 cm. This means that, on average, the female fish is about 27.06 cm in length. The p1 value tells us that the estimate of the proportion of female fish in the population is 0.457. This means that about 45.7% of the fish within the sample are female. The Max Log Likelihood value of 449.7951 tells us that this is the value when the mu1 and p1 values have been optimized. In general, the loglikelihood is used as a way to measure the goodness of fit of a model. The higher the value, the better the overall fit. So in this situation, the value of 449.7951 is the maximum value of the log-likelihood based on the optimal estimates of mu1 and p1.
+
+## Part f
+
+To determine the sex of each fish in the dataset we could use a mixture model where the lengths of male and female fish are modeled as two separate normal distributions. By calculating the posterior probabilities for each fish based on its length and the parameters of the two distributions (like means and variances) you can classify each fish as male or female. We can set the posterior probability of a fish belonging to the female distribution is greater than 0.5, it would be classified as female, otherwise it would be classified as male.
+
+But it is important to note that there are several issues with this approach. The main problem is that there may be overlap between the lengths of male and female fish which could lead to misclassifications, especially for fish with lengths near the boundary of the two distributions. Also this method assumes that the only factor influencing the sex of the fish is their length and ignores other potential factors like age or environmental variables. If the mixture model does not fit the data well like if it was influenced by poorly separated distributions or inaccurate parameter estimation, this could cause there to be errors within the classifications. This means that while this method does offer a general idea and set up for sex identification its overall accuracy could be limited by these assumptions and potential model misfits that may occur.

@@ -1,0 +1,109 @@
+---
+title: "BS852FinalProject-Menon"
+author: "Aditya Menon"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(dplyr)
+library(survival)
+library(survminer)
+library(tableone)
+library(broom)
+
+FP852Data <- read_csv("~/Downloads/project.2025.csv")
+
+str(FP852Data)
+```
+
+```{r}
+analysis <- FP852Data %>%
+  mutate(
+   
+    TimeYr  = Age.last.contact - Age.enrollment,
+    Event   = if_else(Alive == "No", 1L, 0L),  # 1 = death, 0 = censored
+    SexFact = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+    Il6Ter  = ntile(log.il6, 3),
+    Il6Group = factor(Il6Ter, labels = c("Low", "Medium", "High")),
+    HscrpTer = ntile(log.new.hscrp, 3),
+    HscrpGroup = factor(HscrpTer, labels = c("Low", "Medium", "High"))
+  )
+
+SurvObj <- with(analysis, Surv(TimeYr, Event))
+```
+
+```{r}
+KMFit <- survfit(SurvObj ~ Il6Group, data = analysis)
+
+cat("Median survival time by IL-6 group:\n")
+print(summary(KMFit)$table)
+cat("\n")
+
+LRTest <- survdiff(SurvObj ~ Il6Group, data = analysis)
+cat("Log-Rank Test:\n")
+print(LRTest)
+cat("\nInterpretation: Chi-square =", round(LRTest$chisq, 2),
+    ", df =", length(LRTest$n) - 1,
+    ", p-value =", format.pval(1 - pchisq(LRTest$chisq, length(LRTest$n) - 1),
+                               digits = 4), "\n\n")
+```
+
+# Kaplan Meier Curve:
+
+```{r}
+KMPlot <- ggsurvplot(
+  KMFit,
+  data = analysis,
+  pval = TRUE,
+  conf.int = TRUE,
+  risk.table = TRUE,
+  risk.table.height = 0.25,
+  palette = c("red","green","blue"),
+  ggtheme = theme_minimal(base_size = 12),
+  title = "Survival Probability by IL-6 Group",
+  xlab = "Follow-up Time (years)",
+  ylab = "Survival Probability",
+  legend.title = "IL-6 Group",
+  legend.labs = c("Low","Medium","High"),
+  break.time.by = 5
+)
+print(KMPlot)
+```
+
+# Cox Model: 
+
+```{r}
+Cox1 <- coxph(SurvObj ~ log.il6, data = analysis)
+Cox2 <- coxph(SurvObj ~ log.il6 + Age.enrollment + SexFact, data = analysis)
+Cox3 <- coxph(SurvObj ~ log.il6 + Age.enrollment + SexFact + educ + DSST +
+                Z.grip.strength + Z.gait.speed + Z.fev1.7 + Z.bmi + Z.sysbp,
+              data = analysis)
+
+cat("=== MODEL 1: CRUDE ===\n"); print(summary(Cox1)); cat("\n\n")
+cat("=== MODEL 2: AGE + SEX ===\n"); print(summary(Cox2)); cat("\n\n")
+cat("=== MODEL 3: FULLY ADJUSTED ===\n"); print(summary(Cox3)); cat("\n\n")
+```
+
+# PH Assumption: 
+
+```{r}
+PHTest <- cox.zph(Cox3)
+print(PHTest)
+cat("\nInterpretation: p-values > 0.05 indicate no violation of PH assumption\n\n")
+
+plot(PHTest[1], main = "Schoenfeld Residuals for Log IL-6")
+
+Vars <- c("Age.enrollment","SexFact","educ","DSST","Z.grip.strength",
+          "Z.gait.speed","Z.fev1.7","Z.bmi","log.il6","log.new.hscrp","Z.sysbp")
+FactorVars <- c("SexFact")
+
+Tab1 <- CreateTableOne(vars = Vars, factorVars = FactorVars,
+                       strata = "Alive", data = analysis)
+print(Tab1, showAllLevels = TRUE, formatOptions = list(big.mark = ","))
+```

@@ -1,0 +1,372 @@
+---
+title: "Project3_menon.142F"
+author: "Aditya Menon"
+date: "2025-04-15"
+output: pdf_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,     
+  warning = FALSE,    
+  message = FALSE,    
+  error = FALSE       
+)
+```
+
+
+# Question 1 - Data Selection
+
+```{r, include=FALSE}
+library(readr)
+library(ggplot2)
+library(dplyr)
+
+CFB <- read_csv("~/Downloads/dfComplete (2).csv")
+```
+
+Data was obtained from : https://www.kaggle.com/code/jwblackston/cfb-recruiting-and-nfl-draft-success/input 
+
+For this analysis, I have selected a dataset from Kaggle, which tracks college football players' recruiting ratings and their eventual NFL draft outcomes. The dataset can be found here. The dataset contains 659 records with different variables including player name, recruiting year, position, college attended, composite recruit rating, star ranking, and NFL draft grade. The key variables for this project are comp_recruit rating which is their composite recruit ranking out of highschool starts which is reprentative of the star rating of the recruit, and overall which shows the draft pick number they were selected at. This dataset provides a rich source of information to explore the correlation between a player's high school recruitment metrics and their draft success in the NFL. I wanted to study this subject because I have always been interested in the NFL drafts and have noticed how much hype surrounds getting highly rated recruits, but I've always wondered if that actually translates to the NFL and whether those stars/rankings are good indicators of their eventual draft position. 
+
+# Question 2 - Question Formulation
+
+## Research Question: To what extent are a college football recruit’s rating and star ranking predictive of their eventual NFL Draft position?
+
+Every year, thousands of high school athletes are evaluated and ranked by different recruiting services. These players are given numeric ratings (such as 0.9000–1.0000) and star labels (generally ranging from 2 to 5 stars). These metrics play a critical role in college football recruiting, often influencing the number of scholarship offers a player receives and where they ultimately choose to play. As a result recruiting rankings plays a major part in shaping the rosters of top NCAA programs. However it is important to note that one aspect that remains uncertain and widely debated is how well these high school evaluations really translate into long term success. Specifically, the debate is over whether ratings are truly representative of skill and performance at the NFL level.The NFL Draft provides a valuable lens for attempting to answer this question. It represents a public, data rich indicator of a player's perceived value by NFL teams as they transition from college to the pros. If recruiting rankings are strong predictors of talent, we would expect to see a strong inverse relationship between a player's high school rating (and star level) and their eventual NFL draft position. This means that in general higher rated recruits should generally be drafted earlier.This project focuses on the correlation between a player's initial recruiting metrics especially their composite recruit rating and star rating and their eventual NFL Draft position. A deeper understanding of this relationship could provide information on the accuracy of recruiting evaluations, the predictive power of early talent assessments, and whether some metrics (such as star rating vs. composite rating) are truly reliable indicators of future success than others.
+
+# Question 3 - Exploratory Analysis
+
+## Summary Stats
+
+```{r, echo=FALSE}
+CFBSumm <- CFB %>%
+  summarise(
+    MeanRecRat = mean(comp_recruit_rating, na.rm = TRUE),
+    STDRecRat = sd(comp_recruit_rating, na.rm = TRUE),
+    MeanDraftGrd = mean(draft_grade, na.rm = TRUE),
+    STDDraftGrd = sd(draft_grade, na.rm = TRUE),
+    MeanStars = mean(stars, na.rm = TRUE),
+    STDStars = sd(stars, na.rm = TRUE),
+    AvgPPAMeanCar = mean(career_avgPPA, na.rm = TRUE),
+    AvgPPASTDCar = sd(career_avgPPA, na.rm = TRUE)
+  )
+
+print(CFBSumm)
+```
+
+### Figure 1 - Table displaying the summary of the different groups within the dataset.
+
+The summary statistics provide valuable insights into the recruit ratings and draft positions in our sample. The composite recruit rating has a mean of 0.89, with a standard deviation of 0.07, indicating that most recruits are rated near the top end of the scale, although there is some variability. Most players in the dataset are rated around 3.5 stars, with a mean star rating of 3.5 and a standard deviation of 0.79, suggesting a concentration around the midrange but with some recruits rated higher or lower. The mean NFL draft grade is 66.6, with a relatively higher standard deviation of 18.1, reflecting considerable variation in draft grades. The average career performance, measured by PPA, has a mean of 1.5 with a standard deviation of 1.0, suggesting variability in players' professional performances. These statistics reveal that while higherrated recruits tend to have higher draft grades, the variability in both draft grades and career performance highlights that recruit ratings alone do not perfectly predict a player's success in the NFL.
+
+One major limitation that is present to note is that within this dataset there is only players who were drafted into the NFL. This leads to selection bias which a limitation that affects the results of the data since undrafted players are completely excluded. This means our findings apply only to players who reached the NFL draft, not to all college recruits. This is something that could be further explored in a future study. Before conducting any analysis, I looked for missing values in the dataset. Within the data set the draft_grade variable had 15 missing values, accounting for 3.42% of the dataset; totalPPA.pass has 12 missing values, representing 2.73%; and totalPPA.rush has 158 missing values, making up 35.99%. For this study I focused on the datasets with complete data but that is one thing to consider when looking at possible errors.
+
+## Histogram depicting general distribution
+
+```{r, echo=FALSE}
+library(gridExtra)
+
+plot1 <- ggplot(CFB, aes(x = comp_recruit_rating)) + 
+  geom_histogram(binwidth = 0.05, fill = "blue", color = "black", alpha = 0.7) + 
+  labs(title = "Distribution of Rating", x = "Recruit Rating", y = "Frequency")
+
+plot2 <- ggplot(CFB, aes(x = overall)) + 
+  geom_histogram(binwidth = 5, fill = "green", color = "black", alpha = 0.7) + 
+  labs(title = "Distribution of Overall", x = "Overall", y = "Frequency")
+
+plot3 <- ggplot(CFB, aes(x = stars)) + 
+  geom_histogram(binwidth = 1, fill = "red", color = "black", alpha = 0.7) + 
+  labs(title = "Distribution of Stars", x = "Stars", y = "Frequency")
+
+grid.arrange(plot1, plot2, plot3, ncol = 3)
+```
+
+### Figure 2 - The left chart depicts the histogram for the frequency of recruiter ratings, while the second graph shows the frequency of overall ratings and the frequency of star ratings. 
+
+The graphs created show clear trends in recruit ratings, overalls, and star distributions, providing information on recruitment patterns. Recruits generally hold ratings around 0.85, with the data having a distinct left-sided tail, which indicates a higher concentration of recruits with stronger ratings. This pattern is similarly portrayed within the draft grades, where higher scores are favored, though the leftsided tail is not as strong as the recruit ratings. The star rating histogram further supports this overall trend, showing that most players fall within the 3 to 4star range, while 2 and 5star recruits are generally not as common. These distributions collectively highlight the tendency for ratings to skew towards stronger candidates, suggesting that there may be selective recruitment practices. Overall, the draft positions do not have any major skews, nor do the star ratings. The second histogram shows that in general, the overall draft picks within the dataset are evenly spread out, but there are definitely some overalls that are more common than others and some that are not as common, which is something important to consider. The histograms reveal several important characteristics of our data. The distribution of recruit ratings is left skewed with most values clustering between 0.85-0.95, indicating that drafted players typically had high recruit ratings. However, there's a notable tail of lowerrated players who made it to the NFL draft. The distribution of draft positions is relatively uniform across the first several rounds, with some clustering in the late rounds, suggesting that drafted players from our sample are distributed throughout the draft. The 3-star and 4-star recruits dominate the sample, with fewer 5-star and 2-star recruits, which aligns with the general distribution of star ratings across all recruits, where 5-star players are rare.
+
+## Distribution for position
+```{r, echo=FALSE}
+ggplot(CFB, aes(x = position_y)) +
+  geom_bar(fill = "red", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Player Positions",
+       x = "Position",
+       y = "Count") 
+```
+
+### Figure 3 - The chart depicts the count within the dataset for different positions
+
+The data reveals a strong leaning towards offensive players, with wide receivers being the most frequently represented position by a significant margin. Running backs and tight ends follow in popularity, though they have noticeably lower counts. On the other hand, cornerbacks and fullbacks are scarce within the dataset, highlighting that they are relatively rare compared to the heavily favored offensive roles. This distribution shows a clear bias towards offensive positions, particularly wide receivers, who seem to be the most commonly recruited players.
+
+## General Rating by position
+
+```{r, echo=FALSE}
+ggplot(CFB, aes(x = position_y, y = comp_recruit_rating)) +
+  geom_boxplot(fill = "blue", color = "black", alpha = 0.7) +
+  labs(title = "Comp Recruit Rating by Position",
+       x = "Position",
+       y = "Comp Recruit Rating") 
+```
+
+### Figure 4 - The chart shows a boxplot for comp recruit rating by position.
+
+This boxplot shows the distribution of recruit ratings across different football positions and gives insight into player evaluation trends. While cornerbacks are the least represented within the dataset (as evidenced by Figure 3), they have the highest average rating, suggesting that they are highly valued despite their lower numbers. Fullbacks display minimal variability, as indicated by their compact boxplot, meaning their ratings are relatively consistent. Running backs, on the other hand, show the greatest variability, with a wide range of ratings spanning the dataset. Quarterbacks have a majority of their values concentrated in the lower half of the distribution, indicating a tendency toward lower ratings. Meanwhile, wide receivers exhibit a clear outlier at 0.7, marking a notable deviation from the general trend. This visualization highlights the contrasting patterns for different recruit ratings across positions. The boxplot in Figure 4 shows interesting position based variations in recruit ratings. For example, cornerbacks may have higher ratings but lower representation in the dataset because of their specialized role and relatively lower demand compared to other positions. This suggests that while cornerbacks are highly valued when evaluated, the number of top tier recruits in this position may be limited. Further analysis could explore how positional scarcity and demand affect recruit evaluations across different positions.
+
+## General Star rating by Position
+```{r, echo=FALSE}
+library(ggmosaic)
+library(ggplot2)
+
+CFB$position_y <- factor(CFB$position_y)
+CFB$star_category <- factor(CFB$stars, levels = sort(unique(CFB$stars)))
+
+ggplot(CFB, aes(x = position_y, fill = star_category)) +
+  geom_bar(position = "fill") +
+  labs(title = "Proportion of Star Ratings by Position",
+       x = "Position",
+       y = "Proportion",
+       fill = "Star Category") +
+  scale_y_continuous(labels = scales::percent) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Figure 5 - The chart depicts a mosiac chart for the proportion for each position based on star category.
+
+This mosaic plot shows the overall distribution of average star ratings across different football positions, revealing distinct rating trends. Cornerbacks and wide receivers consistently receive the highest average star ratings, around 4, which implies that they generally have strong valuation in their recruitment. This is different for fullbacks, running backs, and tight ends who tend to have lower average ratings, typically around 3, suggesting they are rated lower overall than wide receivers and cornerbacks. Quarterbacks fall in between the two groups, with an average rating of approximately 3.5. Additionally, wide receivers, tight ends, running backs, and quarterbacks exhibit the widest range of ratings, spanning from 2 to 5 stars, which shows that there is significant variability among players in these positions. Fullbacks, however, display very little variation, with ratings confined to the 3 to 4 star range, emphasizing the consistency present in evaluation. This visualization shows the significance of the positional differences in star ratings and highlights variability that exists within key offensive roles.
+
+# Question 3 - Analysis
+
+```{r, echo=FALSE}
+CorrMat <- CFB %>%
+  select(comp_recruit_rating, stars, overall) %>%
+  cor(use = "complete.obs")
+
+print(CorrMat)
+```
+
+### Figure 6 - A correlation matrix between recruit rating,number of stars and pick number.
+
+This correlation matrix shows the relationships between a prospect’s recruit rating, star rating, and overall draft selection. A strong positive correlation exists between a prospect’s recruit rating and their star rating, this makes sense because that indicates that higher rated recruits tend to receive more stars, which is exactly how it should be. However it is important to note that both recruit rating and star rating exhibit weak negative correlations with overall draft selection, suggesting that while higher rated prospects are more likely to be drafted earlier, the relationship is not particularly strong. This implies that additional factors beyond recruit rating and star count may influence a player's draft placement.
+
+## Scatter plot between recruit rating/stars and draft position
+
+```{r, echo=FALSE}
+ggplot(CFB, aes(x = comp_recruit_rating, y = overall)) +
+  geom_point(color = "blue", alpha = 0.5) +
+  geom_smooth(method = "lm", color = "red") +
+  labs(title = "Draft Position vs. Comp Recruit Rating", x = "Comp Recruit Rating", y = "Draft Position") 
+
+ggplot(CFB, aes(x = stars, y = overall)) + 
+  geom_jitter(color = "red", alpha = 0.5, width = 0.2, height = 0) + 
+  geom_smooth(method = "lm", color = "blue") + 
+  labs(
+    title = "Draft Position vs. Star Rankings",
+    x = "Stars",
+    y = "Draft Position"
+  )
+```
+```{r}
+model_rating <- lm(overall ~ comp_recruit_rating, data = CFB)
+slope_rating <- coef(model_rating)[2]
+slope_rating_rounded <- round(slope_rating, 2)
+
+model_stars <- lm(overall ~ stars, data = CFB)
+slope_stars <- coef(model_stars)[2]
+slope_stars_rounded <- round(slope_stars, 2)
+
+cat("Slope for Draft Position vs. Comp Recruit Rating:", slope_rating_rounded, "\n")
+
+cat("Slope for Draft Position vs. Star Rankings:", slope_stars_rounded, "\n")
+```
+
+### Figure 7 - Two charts which show a scatterplot for draft position vs comp recruit rating and one showing draft position vs star rankings.
+
+The two scatter plots show the relationship between a player's recruit rating and star ranking with their eventual draft position in the NFL. Both graphs show significant variability, with data points being widely scattered. This indicates that while ratings and stars play a role, they do not singularly determine a player's overall draft placement.
+
+The first plot, which shows Draft Position vs Comp Recruit Rating, demonstrates a slight negative correlation, where higher recruit ratings are generally associated with earlier draft positions. The slope for this relationship is approximately -225.19, meaning that for each one point increase in composite recruit rating, draft position improves by about 225 spots on average. Similarly, the second plot, Draft Position vs Star Rankings, reveals a similar trend of higher star rated players tending to be drafted sooner, with a slope of approximately -17.26. This indicates that each additional star is associated with an improvement of around 17 draft spots on average. Despite these general trends, the broad spread of data suggests that there are most likely additional factors beyond recruit rating and stars that influence draft selection outcomes.
+
+## Average draft position by star rating
+
+```{r, echo=FALSE}
+AVGDrtPostRat <- CFB %>%
+  group_by(stars) %>%
+  summarise(AVGDraftPos = mean(overall, na.rm = TRUE)) %>%
+  arrange(stars)
+
+print(AVGDrtPostRat)
+```
+
+### Figure 8 - A table showing the average draft position for players with different star ratings.
+
+This table shows the average draft position based on a player's star rating. As expected, prospects with higher star ratings tend to be drafted earlier. Players with a 5-star rating have the lowest average draft position at 87.1, which implies they are more likely to be selected sooner in the draft. While 4 star prospects are second with an average draft position of 118.6, and 3-star players have an average draft position of 127.7. The trend continues on with 2 star players, who have the highest average draft position at 149.8, indicating that lower rated prospects are generally drafted later.
+
+```{r, echo=FALSE}
+library(dplyr)
+
+CFB <- CFB %>%
+  mutate(RatingGroup = case_when(
+    comp_recruit_rating <= 0.7 ~ "0.7 and below",
+    comp_recruit_rating > 0.7 & comp_recruit_rating <= 0.8 ~ "0.71 - 0.80",
+    comp_recruit_rating > 0.8 & comp_recruit_rating <= 0.9 ~ "0.81 - 0.90",
+    comp_recruit_rating > 0.9 ~ "Above 0.9"
+  ))
+
+AVGDrftPostStar <- CFB %>%
+  group_by(RatingGroup) %>%
+  summarise(AVGDraftPos = mean(overall, na.rm = TRUE)) %>%
+  arrange(RatingGroup)
+
+print(AVGDrftPostStar)
+```
+
+### Figure 9 - A table showing the average draft position for players withing different rating groups.
+
+The table created gives more information into the average draft positions for both recruit ratings and star values, highlighting the distinct trends within draft selection. The ratings have been grouped into four categories to more easily conduct analysis. The data shows a clear negative correlation between recruit ratings and draft positions, with higher-rated recruits tending to be drafted earlier. Specifically, players with recruit ratings 0.7 and below have an average draft position of 96.5, suggesting that lower-rated recruits still have relatively good draft spots. However, prospects rated between 0.71 and 0.80 exhibit the highest average draft position at 150.4, indicating they are typically drafted much later. The trend reverses slightly for players rated 0.81 to 0.90, whose average draft position improves to 127.9, while recruits rated above 0.9 see a further improvement with an average draft position of 110.5. This flip of trend is unique and should be explored further to understand its underlying causes.
+
+## Linear Model 
+
+```{r, echo=FALSE}
+CFBLinModel <- lm(overall ~ comp_recruit_rating + stars, data = CFB)
+summary(CFBLinModel)
+```
+
+```{r}
+CFBLinModel <- lm(overall ~ comp_recruit_rating + stars + comp_recruit_rating:stars, data = CFB)
+summary(CFBLinModel)
+```
+
+### Figure 10: Summary output for model created to depict relationship between overall, recruit rating and stars
+
+The linear regression model evaluated the relationship between a recruit's recruit rating, star rating, and their eventual NFL draft position. The results showed that neither recruit rating nor star rating significantly influenced a player's draft placement. While the coefficient for recruit rating (-237.55) suggests that a one unit increase in recruit rating corresponds to an improvement of 237.55 spots in draft position, its p-value (0.0924) indicates a weak statistical significance. Specifically, it is not significant at the regular 0.05 level but shows a trend at the 0.10 level. Similarly, the coefficient for star rating (1.11) implied that an increase in star rating improved a player's draft position by about 1.11 spots, but with a high p-value (0.9246), it meant that the overall effect was negligible. The model’s Adjusted R² (0.0356) is quite low, explaining that only 3.6% of the variation in draft position, suggesting that other factors play a far more significant role. Although the F-statistic (9.094, p = 0.000135) confirmed that the overall model is statistically significant, the individual predictors lack strong explanatory power. These findings suggest that recruit rating and star rating alone do not provide a reliable measure for predicting draft success, and show that more exploration is needed for additional factors such as college performance metrics, positional influences, or physical attributes that may have a stronger overall impact on draft outcomes.
+
+## T-test for 5 star and non 5 star ratings:
+
+```{r, echo=FALSE}
+CFB <- CFB %>%
+  mutate(GroupStars = ifelse(stars == 5, "5 Stars", "Non-5 Stars"))
+
+ggplot(CFB, aes(x = GroupStars, y = overall)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(
+    title = "Boxplot of Draft Overall Pick by Star Group",
+    x = "Star Group",
+    y = "Draft Pick Number"
+  )
+```
+
+### Figure 11: A boxplot was created between a only 5 stars and a non-5 Stars group and compared for overall draft pick number. 
+
+```{r}
+TTestRes <- t.test(overall ~ GroupStars, data = CFB)
+Tstat <- round(TTestRes$statistic, 3)
+df <- round(TTestRes$parameter, 1)
+PVal <- signif(TTestRes$p.value, 3)
+ConfInt <- paste0("[", round(TTestRes$conf.int[1], 2), ", ", round(TTestRes$conf.int[2], 2), "]")
+MeanDiff <- round(diff(TTestRes$estimate), 2)
+
+cat("Null and Alternative Hypotheses:\n")
+cat("H0: The mean pick for 5 Stars equal mean pick for Less than 5 Stars\n")
+cat("Ha: The mean pick for 5 Stars not equal to mean pick for Less than 5 Stars\n\n")
+
+cat("Two-Sample t-test Results:\n")
+cat("T-statistic:", Tstat, "\n")
+cat("Degrees of freedom:", df, "\n")
+cat("P-value:", PVal, "\n")
+cat("95% Confidence Interval for Mean Difference:", ConfInt, "\n")
+cat("Estimated Mean Difference (5 Stars - Less than 5 Stars):", MeanDiff, "\n")
+```
+### Figure 12: Output for Two Sample t-test run between the mean draft position for 5 stars and non 5 stars.
+
+The t-test and boxplot together provide strong evidence about the overall impact of star ratings on draft position. The boxplot visualizes the distribution of draft positions for 5-star recruits and non–5-star recruits, showing a clear difference between the two groups. The 5-star recruits tend to have lower draft pick numbers, and their distribution is relatively tighter in comparison, which suggests less variability in draft placement. This differs from the other group, where non–5-star recruits exhibit a wider spread, implying that that group has greater variation in when they are selected.The t-test further quantifies this difference. With a t-statistic of -3.115 and a p-value of 0.00297, this confirms that the difference in draft positions is statistically significant, allowing us to reject the null hypothesis. The estimated mean draft position difference (38.9 picks) reinforces the trend seen in the boxplot,that higherrated recruits tend to be drafted earlier. Additionally, the 95% confidence interval (-63.94, -13.85) suggests that, while individual variation exists, 5-star recruits are consistently more likely to have lower draft pick numbers. This is evident because 0 is not contained within this interval. Together, the boxplot and t-test show the meaningful role star ratings play in draft selection. However, while the trend is significant, other factors—such as college performance, positional value, or team preferences which likely contribute to draft outcomes as well.
+
+```{r}
+library(glmnet)
+
+X <- as.matrix(CFB[, c("stars", "comp_recruit_rating")]) 
+y <- CFB$overall  
+
+LassoModel <- cv.glmnet(X, y, alpha = 1)
+
+print(paste("Best lambda from cross-validation:", LassoModel$lambda.min))
+
+coefficients <- coef(LassoModel, s = "lambda.min")
+print("Coefficients at the best lambda:")
+print(coefficients)
+
+predictions <- predict(LassoModel, X, s = "lambda.min")
+
+MSE <- mean((predictions - y)^2)
+print(paste("Mean Squared Error: ", MSE))
+```
+
+### Figure 13: Output for Lasso Model between the variables star, comp recruit rating and overall draft pick
+
+```{r}
+library(randomForest)
+
+RFModel <- randomForest(overall ~ stars + comp_recruit_rating, data = CFB)
+
+print(RFModel)
+
+predictions <- predict(RFModel, CFB)
+
+MSE <- mean((predictions - CFB$overall)^2)
+print(paste("Mean Squared Error: ", MSE))
+
+importance(RFModel)
+```
+
+### Figure 14: Output for Random Forest Model between the variables star, comp recruit rating and overall draft pick
+
+The analysis uses multiple modeling approaches (linear regression, LASSO, random forest), but there is limited discussion comparing their relative strengths and weaknesses for this particular problem. The linear regression model explains only 3.6% of the variation in draft position, indicating that recruit rating and star rating alone are weak predictors of draft placement. The Lasso model, with the best lambda value of 0.5739, shows that recruit rating plays a significant role, but regularization removes the star rating's effect, indicating it has a limited impact. The Mean Squared Error (5319.82) in the Lasso model suggests some prediction inaccuracy. The random forest model, despite using 500 trees, explains only 1.31% of the variance, implying that recruit rating and star rating alone do not provide strong predictive power. However, the importance scores from the random forest model show that recruit rating has a much higher influence on draft position than star rating. Overall, while recruit rating consistently appears as the more influential factor, none of the models provide a robust prediction of draft position, suggesting that further exploration of additional factors is necessary to improve predictive accuracy.
+
+```{r}
+KmeansModel <- kmeans(CFB[, c('overall', 'comp_recruit_rating')], centers = 3)
+
+library(ggplot2)
+
+ggplot(CFB, aes(x = overall , y = comp_recruit_rating, color = as.factor(KmeansModel$cluster))) +
+  geom_point() +
+  labs(title = 'K-Means Clustering: Overall vs. Recruit Rating', 
+       x = 'Overall', y = 'Recruit Rating') +
+  scale_color_discrete(name = 'Cluster') 
+```
+
+### Figure 15: Output for K Means clustering between overall and recruit rating
+
+The scatter plot created showed how prospects are grouped based on their overall draft position and recruit rating using a K-Means clustering algorithm. The clusters, represented by red, green, and blue dots, indicate different groupings based on similarities in the two variables. From the visualization, it is evident that there is some separation among the clusters, suggesting that overall recruit rating plays a role in distinguishing different draft outcomes. However, the presence of overlapping points indicates that additional factors beyond recruit rating and overall ranking that may be influencing draft placement. This analysis provides a useful way to separate prospects and investigate potential trends that may be present within the dataset.
+
+# Question 4 - Reccomendations and/or Findings:
+
+The statistical analysis of college football recruiting metrics and NFL draft outcomes showed that while there is some correlation between a player's high school evaluation and their eventual draft position, the predictive power is limited. The linear regression model (Figure 10) was statistically significant overall (F(2, 436) = 9.094, p = 0.000135), but explained only 3.6% of the variation in draft position according to the Adjusted R-squared value. This means that a player’s composite recruit ratings and star rankings alone cannot reliably predict NFL draft success. Despite this statistical limitation, trends are still evident in the data. Overall, players with higher ratings and more stars tend to be drafted earlier. As shown by Figure 8, players with 5-star ratings averaged draft positions of 87.1, compared to 149.8 for 2-star recruits. Similarly, Figure 9 showed that players with composite recruit ratings above 0.9 had average draft positions of 110.5, while those rated between 0.71 and 0.80 averaged 150.4. The t-test results (Figure 12) further confirmed a statistically significant difference between 5-star and non 5-star recruits (t-statistic = -3.115, p = 0.00297), with an estimated mean difference of 38.9 draft positions.
+
+Position specific analysis (Figures 4 and 5) showed interesting variations, with cornerbacks having the highest average recruit ratings despite lower representation, while wide receivers exhibited the greatest variability. The correlation matrix (Figure 6) indicated a strong positive relationship between recruit rating and star rating, but weak negative correlations between these metrics and draft position. Multiple modeling approaches, including LASSO regression (Figure 13) and random forest (Figure 14), consistently showed recruit rating having greater importance than star rating, but revealed substantial unexplained variance. The random forest model explained only 1.31% of the variance, while the K-means clustering (Figure 15) showed some separation but noticeable overlap between clusters.
+
+These findings imply that while composite ratings and star rankings provide useful early indicators of potential, they should be viewed as just one component in a comprehensive evaluation process that includes college performance, physical attributes, positional factors, and team specific needs. More research should be conducted to better understand the many variables that influence NFL draft position, as factors such as the conference a player competed in and their position could have significant impacts on outcomes. From both the data (conference variable influence) and personal experience, it is evident that the level of competition in a player’s conference and the specific positional value in a given draft class can have major effects on a player's draft stock. This study ultimately showed that while a player’s star rating and composite recruit rating can be used to predict their NFL draft pick to some extent, the prediction will not be entirely accurate, and considerable variability remains unaccounted for.
+
+The analysis done within this report has real world implications by showing that while a player's star rating and composite recruit rating can offer a rough estimate of their potential NFL draft position, they are far from perfect predictors. In practice, other critical factors such as college performance, physical development, level of competition, positional value, and team specific needs play major roles in shaping draft outcomes. This supports the idea that scouting and drafting decisions should not rely solely on high school evaluations, but instead should take a more complete and combined view of a player's growth and performance over time. One important consideration in this report is that the dataset only includes players who were drafted. In reality, many players are not drafted, and this selection bias could skew the results. To improve the accuracy of the analysis, it would be beneficial to find a dataset that includes both drafted and undrafted players, allowing for a more comprehensive and representative analysis.
+
+# Sources:
+
+# R for Data Science
+
+[R for Data Science](https://r4ds.had.co.nz)
+
+## Slides from STAT 4194 at Ohio State University with Professor Thomas Metzger
+
+
+# Regression Tree: 
+
+```{r}
+library(rpart)
+library(rpart.plot)
+ModelTree <- rpart(overall ~ comp_recruit_rating + stars, data = CFB, method = "anova")
+
+summary(ModelTree)
+
+rpart.plot(ModelTree, type = 3, extra = 101, fallen.leaves = TRUE)
+
+df$predicted_overall <- predict(ModelTree, CFB)
+
+```

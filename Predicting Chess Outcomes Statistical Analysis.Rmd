@@ -1,0 +1,421 @@
+---
+title: "STAT 3302 Final Project - Predicting Chess Outcomes"
+author: "Aditya Menon"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, fig.width=5, fig.height=3, size="small"}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Abstract
+
+Chess is a game that involves deep strategy and complex decision making that has long fascinated players, researchers, and AI developers alike. With the increasing availability of online chess data and advancements within statistical modeling, we now have the tools to properly analyze the game more systematically than ever before. To explore this complexity an analysis was done on a dataset containing detailed information from over 20,000 online chess games was analyzed to identify factors that influence match outcomes (J. Mitchell, 2024). Within the exploratory data analysis, it was found that rating difference had a strong relationship with game results, which encouraged further investigation into how various game characteristics affect win probabilities. This was supported by existing chess theory suggesting that while rating difference is important, other factors like opening selection and time control also play significant roles. Therefore, the group focused on answering the question of how game dynamics and player characteristics influence and help predict the winner of a chess match. Match outcomes were measured using a binary response variable indicating whether White won or lost. A logistic regression model was built to predict the probability of White winning versus Black winning. Several model specifications were tested, but the main focus was on one that included rating difference, turns, victory status, and opening moves, because it provided the most significant results. To choose the best model, stepwise selection was done and evaluated based on the lowest AIC and most significant covariates. Visualizations of the predicted probabilities were then created to examine whether specific game characteristics led to a higher probability of White winning, with special attention to rating differences and opening selections. The results showed that meaningful relationships exist between win probabilities and rating difference, with each rating point advantage increasing win odds by approximately 0.39%. Additional factors, such as opening move sequence and game length, also showed significant effects on match outcomes.
+
+# Introduction
+
+The focus of this project was to determine how can chess players and platforms utilize game data to better understand the factors that determine match outcomes and use that information to improve in game decision making? Emphasis was put on the following research questions
+
+How does a player's probability of winning change based on rating difference, game length, and time control settings?
+
+Which game characteristics are most important in predicting chess match outcomes?
+
+Are there specific openings or playing conditions that significantly favor either White or Black?
+
+Some important background information to consider is that the analysis is based on information from a dataset provided by Lichess.org, a popular online chess platform, which contains detailed information on over 20,000 chess games (J. Mitchell, 2024). The dataset includes player ratings, the number of turns per game, time control settings, the number of moves in the opening phase, match outcomes, and other variables. These variables provide the group with a comprehensive and broad view of each game’s structure and allow for the modeling of outcomes using statistical methods.
+
+Addressing these research questions is important for both chess players and platforms. Chess players can use insights to improve their performance, while platforms can use the findings to enhance matchmaking algorithms. With millions of chess players worldwide, understanding how different factors affect game outcomes can help players make more informed strategic choices. Insights into the relationship between rating differences and win probabilities can support improvements to existing skill rating systems. Additionally, understanding which openings favor specific sides could guide players in optimizing their opening play based on statistical evidence rather than traditional theory.
+
+# Data and Methods
+
+## Dataset Description:
+
+The dataset for this analysis was provided by Lichess.org and contains detailed information on over 20,000 chess games (J. Mitchell, 2024). The key variables within the dataset are:
+
+```{r, echo=FALSE, fig.width=5, fig.height=3, size="small"}
+library(knitr)
+
+VarbDesc <- data.frame(
+  Variable = c("rated", "start_time", "end_time", "turns", "white_rating", "black_rating", "victory_status", "opening_ply", "opening_eco"),
+  Description = c(
+	"Indicates whether the game was rated (1) or casual (0).",
+	"Represents the starting time of the game.",
+	"Represents the ending time of the game.",
+	"Total number of full turns (1 turn = 1 move by White + 1 move by Black).",
+	"White's ELO rating (player rating).  A higher rating is better.",
+	"Black's ELO rating (player rating).  A higher rating is better.",
+	"Describes how the game ended: 'mate' (checkmate), 'resign', or 'outoftime'.",
+	"Number of half moves played during the game's opening phase.",
+	"The opening sequence performed by the White"
+  )
+)
+
+kable(VarbDesc, caption = "Variable Descriptions for Chess Dataset")
+```
+
+The dataset includes both categorical and continuous variables related to player characteristics and game attributes. However, some records contained incomplete information. Therefore, a subset of the data with complete values for all relevant predictors was selected, resulting in 19,108 complete chess game records for analysis.
+
+## Preprocessing Steps:
+The original raw data underwent several preprocessing steps to properly supply the model with relevant information. First, from the original dataset, the categorical "winner" variable was converted into a binary numeric variable "winner_bin" (1 = White win, 0 = Black win). This step was done to make the problem a binary classification and allow the interpretation of coefficients in terms of increased or decreased odds of a white victory.
+Then, draws were excluded from the logistic regression modeling to ensure a simpler binary outcome. Since we are modeling this data with a logistic regression model, we can only have two potential outcomes, so we elected to drop the draws. Next, the "increment_code" variable was split into two separate numeric variables, the first being time_base (base time in minutes) and then time_increment (increment per move in seconds). This conversion allowed us to more easily numerically evaluate how the total available time and increment mechanics impact game outcomes. This also allowed for cleaner visualization and interpretation within the regression.Additionally, a "rating_diff" variable was created by calculating white_rating minus black_rating, to capture the rating gap between players as a meaningful predictor of outcome. The total game duration was also derived as the difference between end_time and start_time, providing a direct measure of how long the game lasted.Categorical variables like victory_status and opening_eco were converted to factors to enable proper handling in the logistic regression model. Finally, games with missing or nonbinary outcomes were removed. This ensured we did not introduce bias or lead to convergence issues within logistic regression. After these preprocessing steps, the final dataset was ready for modeling.
+
+
+# Data and Methods Used
+
+```{r,include=FALSE, fig.width=5, fig.height=3, size="small"}
+library(readr)
+library(knitr)
+library(tidyverse)
+library(lubridate)
+library(MASS)
+```
+
+```{r,include=FALSE, fig.width=5, fig.height=3, size="small"}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+install.packages("GGally", repos = "https://cloud.r-project.org")
+library(GGally)
+library(broom)
+library(leaps)
+Chess <- read_csv("D:/School/STAT3302/chess.csv")
+
+logit = function(p){ log(p / (1 - p)) }
+```
+
+
+Since our model only focuses on the when the outcomes of the game are a win, the new dataset contains 19,108 chess game records with 17 variables that provide detailed information about every match. The key variables which we wished to explore further are:
+
+```{r, echo=FALSE, message=FALSE, fig.cap = "Variables Included in the Model"}
+library(knitr)
+
+ChessVars <- data.frame(
+  Variable = c("Winner", "Rated", "Time", "Turns", "Rating Difference", "Victory Status", "Opening Play"),
+  Class = c("Categorical", "Categorical", "Numeric", "Numeric", "Numeric", "Categorical", "Numeric"),
+  Description = c(
+	"Indicates who won the game: 'White', 'Black', or 'Draw'.",
+	"Indicates if the game was rated (affects player rating).",
+	"Duration of the game.",
+	"Number of turns taken in the game.",
+	"Difference in player rating between white and black.",
+	"How the game ended: 'Mate', 'Resign', 'Out of Time'.",
+	"Length of the opening phase of the game."
+  )
+)
+
+kable(ChessVars, caption = "Description of Variables in the Chess Dataset")
+```
+
+The original raw data underwent several pre-processing steps to properly supply the model with relevant information. First, from the original data set, the categorical "winner" variable was converted into a binary numeric variable "winner_bin" (1 = White win, 0 = Black win). This step was done to make the problem a binary classification and allow the interpretation of coefficients in terms of increased or decreased odds of a white victory.
+
+Then, draws were excluded from the logistic regression modeling to ensure a simpler binary outcome. Since, we are modeling this data with a logistic regression model, we can only have two potential otucomes, so we elected to drop the draws. Next, the "increment_code" variable was split into two separate numeric variables, the first being time_base (base time in minutes) and then time_increment (increment per move in seconds). This conversion allowed us to more easily numerically evaluate how the total available time and increment mechanics impact game outcomes. This also allowed for cleaner visualization and interpretation within the regression. Finally, games with missing or nonbinary outcomes were removed. This ensured we did not introduce bias or lead to convergence issues within logistic regression.
+
+```{r,include=FALSE, fig.width=5, fig.height=3, size="small", fig.align='center'}
+Chess = Chess %>%
+  mutate(
+	white_wins = ifelse(winner == "white", 1, 0),
+	rated = as.integer(rated),
+	rating_diff = white_rating - black_rating,
+	time = end_time - start_time
+  )
+
+Chess$victory_status = as.factor(Chess$victory_status)
+Chess$opening_eco = as.factor(Chess$opening_eco)
+Chess$opening_name = as.factor(Chess$opening_name)
+```
+
+\newpage
+
+# Exploratory Data Analysis
+
+```{r,echo=FALSE, fig.width=5, fig.height=2.5, size="small", fig.cap = "Histogram displaying the distribution of game outcomes (White wins, Black wins, and Draws) based on the rating difference between White and Black players. The x-axis represents the difference in rating (White rating minus Black rating), while the y-axis shows the count of games. The plot uses overlapping, semi-transparent, different-colored bars to visualize how game results vary across rating differences.", fig.align='center'}
+library(dplyr)
+library(ggplot2)
+
+Chess %>%
+  mutate(rating_diff = white_rating - black_rating) %>%
+  mutate(result = case_when(
+	winner == "white" ~ "White Win",
+	winner == "black" ~ "Black Win",
+	winner == "draw"  ~ "Draw"
+  )) %>%
+  ggplot(aes(x = rating_diff, fill = result)) +
+  geom_histogram(bins = 50, position = "identity", alpha = 0.5) +
+  labs(title = "Game Outcomes by Rating Difference (White - Black)",
+   	x = "Rating Difference", y = "Count")
+
+```
+
+This chart suggests that when white has a higher rating than black, they are more likely to win.  There is also a fairly low frequency of draws suggesting that our exclusion of draws from out analysis is acceptable.
+
+```{r,echo=FALSE, fig.width=5, fig.height=3.0, size="small", fig.cap = "Coefficient Matrix", warning="False", message="False", fig.align='center'}
+library(GGally)
+library(ggcorrplot)
+
+SelectData1 <- dplyr::select(Chess, white_wins, rating_diff, turns, opening_ply)
+GGally::ggpairs(SelectData1, aes(color = as.factor(white_wins), alpha = 0.5)) +
+  theme_bw()
+```
+
+We can see that the coefficient matrix again highlights the importance of the rating difference while also suggesting that the more turns, the less likely that white is to win.
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small", fig.cap = "A histogram for the result of the game: resign, mate, out of time, draw", fig.align='center'}
+Chess %>%
+  group_by(victory_status) %>%
+  summarise(count = n()) %>%
+  ggplot(aes(x = reorder(victory_status, -count), y = count, fill = victory_status)) +
+  geom_col(show.legend = FALSE) +
+  labs(title = "Victory Status Distribution", x = "Victory Status", y = "Number of Games") +
+  theme_minimal()
+```
+
+
+```{r, echo=FALSE, fig.width=5, fig.height=4, size="small" , fig.cap = "Barchart depicting the most common openings, data has been filtered to only include those present more than 500 times"}
+popularity_threshold = 500
+
+EcoLabelsDF = tibble::tibble(
+  opening_eco = c("A00", "C00", "D00", "B01", "C41", "C20", "A40", "B00", "B20", "C50"),
+  Label = c(
+	"Irregular Opening",
+	"French Defense",
+	"Queen's Pawn Game",
+	"Scandinavian Defense",
+	"Philidor Defense",
+	"King's Pawn Game",
+	"Queen's Pawn Opening",
+	"King's Pawn Opening",
+	"Sicilian Defense",
+	"Italian Game"
+  )
+)
+
+PopOp = Chess %>%
+  group_by(opening_eco) %>%
+  summarise(Frequency = n()) %>%
+  filter(Frequency > popularity_threshold) %>%
+  arrange(desc(Frequency)) %>%
+  left_join(EcoLabelsDF, by = "opening_eco") %>%
+  mutate(Label = ifelse(is.na(Label), opening_eco, Label))  
+```
+
+\newpage
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+TopWhitOP <- Chess %>%
+  filter(opening_eco %in% PopOp$opening_eco) %>%
+  left_join(EcoLabelsDF, by = "opening_eco") %>%
+  mutate(Label = ifelse(is.na(Label), opening_eco, Label)) %>%
+  group_by(Label) %>%
+  summarise(
+	Games = n(),
+	WhiteWins = sum(winner == "white"),
+	BlackWins = sum(winner == "black"),
+	Draws = sum(winner == "draw"),
+	WhiteWinRate = round(WhiteWins / Games, 4),
+	.groups = "drop"
+  ) %>%
+  filter(Games > 500) %>%
+  arrange(desc(WhiteWinRate)) %>%
+  head(10)
+
+kable(TopWhitOP, digits = 4, caption = "Top 10 Chess Openings (500+ Games) by White Win Rate")
+```
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+PopOp = names(which(table(Chess$opening_eco) >= 500))
+DFPop = Chess[Chess$opening_eco %in% PopOp, ]
+```
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+library(dplyr)
+library(tibble)
+
+EcoLabelsDF <- tibble::tibble(
+  opening_eco = c("A00", "C00", "D00", "B01", "C41", "C20", "A40", "B00", "B20", "C50"),
+  Label = c(
+	"Irregular Opening",
+	"French Defense",
+	"Queen's Pawn Game",
+	"Scandinavian Defense",
+	"Philidor Defense",
+	"King's Pawn Game",
+	"Queen's Pawn Opening",
+	"King's Pawn Opening",
+	"Sicilian Defense",
+	"Italian Game"
+  )
+)
+```
+
+
+\newpage
+
+# Model Specification
+
+We started with a full model and performed step wise selection. We selected the model with the lowest AIC...
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+Chess <- Chess %>%
+  mutate(
+	white_wins = ifelse(winner == "white", 1, 0),
+	rated = as.integer(rated),
+	rating_diff = white_rating - black_rating,
+	time = end_time - start_time
+  )
+
+ModelFull <- glm(
+  white_wins ~ rated + time + turns + rating_diff + victory_status + opening_ply,
+  data = Chess,
+  family = binomial(link = "logit")
+)
+
+StepModel <- stepAIC(ModelFull, direction = "both", trace = FALSE)
+
+steps <- StepModel$anova
+variables <- list()
+CurrenVars <- character()
+
+for (i in seq_len(nrow(steps))) {
+  action <- steps$Step[i]
+  if (!is.na(action)) {
+	var <- gsub("[+-] ", "", action)
+	if (grepl("\\+", action)) {
+  	CurrenVars <- union(CurrenVars, var)
+	} else if (grepl("-", action)) {
+  	CurrenVars <- setdiff(CurrenVars, var)
+	}
+  }
+  variables[[i]] <- paste(CurrenVars, collapse = ", ")
+}
+
+StepTab <- data.frame(
+  Step = paste0("Step ", seq_len(nrow(steps))),
+  Variables = unlist(variables),
+  AIC = round(steps$AIC, 4)
+)
+
+kable(StepTab, caption = "Stepwise Selection Path: Variables Included at Each Step")
+```
+
+We define the logistic regression model such that $y_i$ denote the observed data with $y_i = 1$ if white wins the chess match and $y_i = 0$  if white loses the match for i = 1,...,n.
+
+$y_i$ are realizations from $Y_i \sim Bernouli(p_i)$ independently.  $p_i$ is the probability that white wins.  We define...
+
+Based on the analysis completed the group defined the logistic regression model as  
+$\eta_i = \text{logit}(p_i) = \beta_0 + \beta_1 \cdot \text{turns}_i + \beta_2 \cdot \text{rating\_diff}_i + \beta_3 \cdot I(\text{victory\_status}_i = \text{"outoftime"}) + \\\beta_4 \cdot I(\text{victory\_status}_i = \text{"resign"}) + \beta_5 \cdot \text{opening\_ply}_i$
+
+Where the baseline is a game that ends in checkmate.
+
+Within this model $\eta_i$ represents the log odds of white winning the ith chess match, $\text{logit}(p_i)$ respresents the probability that white wins the match. $\text{turns}_i$ represents the number of full turns completed within the game. $\text{rating\_diff}_i$ represents the difference in ELO ratings between the white and black players.$I(\text{victory\_status}_i$ represents how the game ended with a 0 indicating that ending didn't happen and 1 indicating that win happened. And $\text{opening\_ply}_i$ represents the number of half moves occurring within the opening phase of the game.
+
+The next step involved completing model selection by looking at the AIC value:
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+ModelFull <- glm(
+  white_wins ~ rated + time + turns + rating_diff + victory_status + opening_ply,
+  data = Chess %>%
+	mutate(
+  	white_wins = ifelse(winner == "white", 1, 0),
+  	rated = as.integer(rated),
+  	rating_diff = white_rating - black_rating,
+  	time = end_time - start_time
+	),
+  family = binomial(link = "logit")
+)
+
+CoefTable <- as.data.frame(tidy(ModelFull))
+names(CoefTable)[names(CoefTable) == "term"] <- "Coefficient"
+names(CoefTable)[names(CoefTable) == "estimate"] <- "Estimate"
+names(CoefTable)[names(CoefTable) == "std.error"] <- "Std. Error"
+names(CoefTable)[names(CoefTable) == "p.value"] <- "Pr(>|z|)"
+CoefTable <- CoefTable[, c("Coefficient", "Estimate", "Std. Error", "Pr(>|z|)")]
+
+ModelStats <- as.data.frame(glance(ModelFull))
+ModelStats <- data.frame(
+  `Null Deviance` = round(ModelStats$null.deviance, 4),
+  `Residual Deviance` = round(ModelStats$deviance, 4),
+  AIC = round(ModelStats$AIC, 4)
+)
+
+kable(CoefTable, digits = 4, caption = "Logistic Regression Coefficients")
+
+kable(ModelStats, digits = 4, caption = "Model Summary Statistics")
+```
+
+
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, warning="False", size="small", fig.cap = "The left side panel shows the predicted probability of a white win in a chess match as a function of the rating difference between the white and black players. The plot includes a confidence ribbon representing the 95% confidence interval. The right side panel shows the distribution of games based on the rating difference and whether white wins, with individual data points, jittered along the x-axis for better visualization of density."}
+library(ggplot2)
+library(dplyr)
+
+RatingSeq = seq(min(Chess$rating_diff, na.rm = TRUE),
+            	max(Chess$rating_diff, na.rm = TRUE),
+            	length.out = 300)
+
+
+NewData = data.frame(
+  rating_diff = RatingSeq,
+  rated = 1,
+  turns = median(Chess$turns, na.rm = TRUE),
+  victory_status = "resign",
+  opening_ply = median(Chess$opening_ply, na.rm = TRUE)
+)
+
+preds = predict(StepModel, newdata = NewData, type = "link", se.fit = TRUE)
+NewData$pred = plogis(preds$fit)
+NewData$lower = plogis(preds$fit - 1.96 * preds$se.fit)
+NewData$upper = plogis(preds$fit + 1.96 * preds$se.fit)
+
+ggplot() +
+  geom_ribbon(data = NewData, aes(x = rating_diff, ymin = lower, ymax = upper),
+          	fill = "blue", alpha = 0.25) +
+  geom_line(data = NewData, aes(x = rating_diff, y = pred), color = "blue", size = 1.2) +
+  geom_jitter(data = Chess, aes(x = rating_diff, y = white_wins),
+          	width = 5, height = 0.03, alpha = 0.2, color = "black") +
+  labs(
+	title = "Predicted Probability of White Win vs Rating Difference",
+	x = "Rating Difference (White - Black)",
+	y = "Predicted Probability (White Wins)"
+  ) +
+  theme_minimal()
+```
+
+\newpage
+
+# Analyze Opening Moves
+
+Since we are provided the opening move done by white, we can also suggest which opening moves for white might lead to higher odds of winning.  
+
+We define the logistic regression model as Let $y_i$ denote the observed data with $y_i = 1$ if white wins the chess match and 0 if white loses the match for i = 1,...,n.
+
+$y_i$ are realizations from $Y_i \sim Bernouli(p_i)$ independently.  $p_i$ is the probability that white wins.  We define...
+
+$\eta_i = logit(p_i) = \beta_0 + \beta_1 * (opening \space eco == "A40") + ...+\beta_9*(opening \space eco == "D00")$
+
+Where the baseline is an unknown opening.
+
+```{r,echo=FALSE, fig.width=5, fig.height=3, size="small"}
+library(broom)
+library(dplyr)
+
+ModelPop <- glm(
+  white_wins ~ opening_eco,
+  data = DFPop,
+  family = binomial(link = "logit")
+)
+
+CoefTable <- as.data.frame(broom::tidy(ModelPop))
+
+names(CoefTable)[names(CoefTable) == "term"] <- "Coefficient"
+names(CoefTable)[names(CoefTable) == "estimate"] <- "Estimate"
+names(CoefTable)[names(CoefTable) == "std.error"] <- "Std. Error"
+names(CoefTable)[names(CoefTable) == "p.value"] <- "Pr(>|z|)"
+
+CoefTable <- CoefTable %>%
+  dplyr::mutate(opening_eco = gsub("opening_eco", "", Coefficient)) %>%
+  left_join(EcoLabelsDF, by = "opening_eco") %>%
+  dplyr::mutate(Label = ifelse(is.na(Label), "Irregular Opening", Label)) %>%
+  dplyr::select(Coefficient, Label, Estimate, `Std. Error`, `Pr(>|z|)`)
+
+knitr::kable(CoefTable, digits = 4, caption = "Model Coefficients: Effect of Opening on White Wins")
+```

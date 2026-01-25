@@ -1,0 +1,402 @@
+---
+title: "Final Project BS803"
+author: "Aditya Menon"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Function Code: 
+
+```{r}
+OLSRun <- function(data, outcomeVar, predictorVars, alpha = 0.05) {
+# ============================================================================
+# FOR INPUT VALIDATION AND HANDLING ERRORS
+# ============================================================================
+  
+  # Check if data is actually a dataframe
+  if (!is.data.frame(data)) {
+    stop("Error: The 'data' parameter must be a dataframe.")
+  }
+  
+  # Check if the outcome variable exists in the dataset
+  if (!outcomeVar %in% names(data)) {
+    stop(paste0("Error: The outcome variable '", outcomeVar, 
+                "' was not found in the dataset. The available variables are: ",
+                paste(names(data), collapse = ", ")))
+  }
+  
+  # Check if all predictor variables exist in the dataset
+  missingPredictors <- predictorVars[!predictorVars %in% names(data)]
+  if (length(missingPredictors) > 0) {
+    stop(paste0("Error: The following predictor variable(s) were not found in the dataset: ",
+                paste(missingPredictors, collapse = ", "), 
+                ". The variables that are available: ",
+                paste(names(data), collapse = ", ")))
+  }
+  
+  # Check if outcome variable is the same as any predictor
+  if (outcomeVar %in% predictorVars) {
+    stop("There is an error. The outcome variable cannot also be a predictor variable.")
+  }
+  
+  # Check if alpha is valid
+  if (alpha <= 0 || alpha >= 1) {
+    stop("Error: The alpha value must be between 0 and 1.")
+  }
+  
+# ============================================================================
+# HANDLING MISSING DATA 
+# ============================================================================
+  
+  # Select only the variables needed for the analysis
+  analysisData <- data[c(outcomeVar, predictorVars)]
+  
+  # Check for missing values
+  missingCount <- sum(!complete.cases(analysisData))
+  if (missingCount > 0) {
+    warning(paste0("Warning: ", missingCount, " observation(s) with missing values were removed."))
+  }
+  
+  # Remove rows with missing data
+  analysisData <- na.omit(analysisData)
+  
+  # Check if we have enough observations after removing missing data
+  if (nrow(analysisData) <= length(predictorVars) + 1) {
+    stop("Error: Not enough observations after removing missing data. You need at least ",
+         length(predictorVars) + 2, " complete observations.")
+  }
+  
+# ============================================================================
+# MATRIX CONSTRUCTION
+# ============================================================================
+  
+  # Create Y matrix (outcome variable)
+  Y <- as.matrix(analysisData[[outcomeVar]])
+  
+  # Create X matrix (predictor variables)
+  X <- as.matrix(analysisData[predictorVars])
+  
+  # Add intercept column of 1s to X matrix
+  X <- cbind(Intercept = 1, X)
+  
+# ============================================================================
+# CHECK FOR MULTICOLLINEARITY
+# ============================================================================
+  
+  # Check if X'X is singular (perfect multicollinearity)
+  XtX <- t(X) %*% X
+  if (det(XtX) == 0 || abs(det(XtX)) < 1e-10) {
+    stop("Error: Perfect multicollinearity was detected,predictor variables are linearly dependent.")
+  }
+  
+# ============================================================================
+# OLS COEFFICIENT ESTIMATION
+# ============================================================================
+  
+  # Calculate (X'X)^(-1)
+  XtXInverse <- solve(XtX)
+  
+  # Calculate coefficient estimates: B = (X'X)^(-1) X'Y
+  Bhat <- XtXInverse %*% t(X) %*% Y
+  
+# ============================================================================
+# PREDICTIONS AND RESIDUALS
+# ============================================================================
+  
+  # Calculate fitted values
+  Yhat <- X %*% Bhat
+  
+  # Calculate residuals
+  residuals <- Y - Yhat
+  
+# ============================================================================
+# DEGREES OF FREEDOM
+# ============================================================================
+  
+  # Number of observations
+  n <- nrow(X)
+  
+  # Number of parameters (including intercept)
+  k <- ncol(X)
+  
+  # Degrees of freedom for residuals
+  dfResidual <- n - k
+  
+  # Degrees of freedom for model
+  dfModel <- k - 1
+  
+# ============================================================================
+# VARIANCE AND STANDARD ERRORS
+# ============================================================================
+  
+  # Estimate residual variance: formula - sigma^2 = (residuals(p) * residuals) / (n - k)
+  sigmaSquared <- as.numeric(t(residuals) %*% residuals) / dfResidual
+  
+  # Residual standard error
+  residualSE <- sqrt(sigmaSquared)
+  
+  # Standard errors for coefficients
+  standardErrors <- sqrt(diag(sigmaSquared * XtXInverse))
+  
+# ============================================================================
+# T-STATISTICS AND P-VALUES
+# ============================================================================
+  
+  # Calculate t-statistics
+  tStats <- Bhat / standardErrors
+  
+  # Calculate two-tailed p-values
+  pValues <- 2 * pt(abs(tStats), df = dfResidual, lower.tail = FALSE)
+  
+# ============================================================================
+# CONFIDENCE INTERVALS
+# ============================================================================
+  
+  # Critical value from t-distribution
+  tCritical <- qt(1 - alpha/2, df = dfResidual)
+  
+  # Lower confidence interval
+  lowerCI <- Bhat - tCritical * standardErrors
+  
+  # Upper confidence interval
+  upperCI <- Bhat + tCritical * standardErrors
+  
+# ============================================================================
+# R-SQUARED AND ADJUSTED R-SQUARED
+# ============================================================================
+  
+  # Total sum of squares
+  totalSS <- sum((Y - mean(Y))^2)
+  
+  # Residual sum of squares
+  residualSS <- sum(residuals^2)
+  
+  # Model sum of squares
+  modelSS <- totalSS - residualSS
+  
+  # R-squared
+  rSquared <- 1 - (residualSS / totalSS)
+  
+  # Adjusted R-squared
+  adjRSquared <- 1 - ((residualSS / dfResidual) / (totalSS / (n - 1)))
+  
+# ============================================================================
+# F-TEST FOR OVERALL MODEL SIGNIFICANCE
+# ============================================================================
+  
+  # Mean square for model
+  modelMS <- modelSS / dfModel
+  
+  # Mean square for residuals
+  residualMS <- residualSS / dfResidual
+  
+  # F-statistic
+  fStatistic <- modelMS / residualMS
+  
+  # P-value for F-test
+  fPValue <- pf(fStatistic, df1 = dfModel, df2 = dfResidual, lower.tail = FALSE)
+  
+# ============================================================================
+# VARIANCE INFLATION FACTORS (VIF) FOR MULTICOLLINEARITY DIAGNOSTICS USE
+# ============================================================================
+  
+  vif <- NULL
+  if (length(predictorVars) > 1) {
+    vif <- numeric(length(predictorVars))
+    
+    for (i in 1:length(predictorVars)) {
+      # For each predictor revert it on all other predictors
+      otherPredictors <- predictorVars[-i]
+      tempX <- as.matrix(analysisData[otherPredictors])
+      tempX <- cbind(1, tempX)
+      tempY <- as.matrix(analysisData[[predictorVars[i]]])
+      
+      # Calculate R-squared for this regression
+      tempBhat <- solve(t(tempX) %*% tempX) %*% t(tempX) %*% tempY
+      tempYhat <- tempX %*% tempBhat
+      tempResiduals <- tempY - tempYhat
+      tempTotalSS <- sum((tempY - mean(tempY))^2)
+      tempResidualSS <- sum(tempResiduals^2)
+      tempRSquared <- 1 - (tempResidualSS / tempTotalSS)
+      
+      # Calculate VIF
+      vif[i] <- 1 / (1 - tempRSquared)
+    }
+    
+    vifDF <- data.frame(
+      Variable = predictorVars,
+      VIF = round(vif, 4)
+    )
+  } else {
+    vifDF <- data.frame(
+      Variable = predictorVars,
+      VIF = NA
+    )
+  }
+  
+# ============================================================================
+# CREATE OUTPUT TABLES
+# ============================================================================
+  
+  # Coefficient table including all statistics
+  coefficientTable <- data.frame(
+    Variable = c("Intercept", predictorVars),
+    Estimate = round(as.vector(Bhat), 4),
+    StdError = round(standardErrors, 4),
+    tStatistic = round(as.vector(tStats), 4),
+    pValue = format.pval(pValues, digits = 4, eps = 0.0001),
+    CI_Lower = round(as.vector(lowerCI), 4),
+    CI_Upper = round(as.vector(upperCI), 4)
+  )
+  
+  # Add stars representing significance
+  coefficientTable$Significance <- ifelse(pValues < 0.001, "***",
+                                           ifelse(pValues < 0.01, "**",
+                                                  ifelse(pValues < 0.05, "*",
+                                                         ifelse(pValues < 0.1, ".", ""))))
+  
+  # Model summary statistics
+  modelSummary <- data.frame(
+    Statistic = c("R-squared", "Adjusted R-squared", "Residual Std Error",
+                  "F-statistic", "F p-value", "Degrees of Freedom (Model)",
+                  "Degrees of Freedom (Residual)", "Number of Observations"),
+    Value = c(round(rSquared, 4), round(adjRSquared, 4), round(residualSE, 4),
+              round(fStatistic, 4), format.pval(fPValue, digits = 4, eps = 0.0001),
+              dfModel, dfResidual, n)
+  )
+  
+# ============================================================================
+# RETURN THE RESULTS
+# ============================================================================
+  
+  result <- list(
+    Coefficients = coefficientTable,
+    ModelSummary = modelSummary,
+    VIF = vifDF,
+    Residuals = as.vector(residuals),
+    FittedValues = as.vector(Yhat),
+    ConfidenceLevel = 1 - alpha
+  )
+  
+  class(result) <- "OLSRun"
+  return(result)
+}
+
+# ============================================================================
+# PRINT WITH NICE OUTPUT FORMATTING
+# ============================================================================
+
+
+print.OLSRun <- function(x, ...) {
+  cat("\n========================================\n")
+  cat("  ORDINARY LEAST SQUARES REGRESSION\n")
+  cat("========================================\n\n")
+  
+  cat("COEFFICIENT ESTIMATES:\n")
+  print(x$Coefficients, row.names = FALSE)
+  cat("\nSignificance codes: 0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n")
+  cat(paste0("Confidence Level: ", x$ConfidenceLevel * 100, "%\n\n"))
+  
+  cat("MODEL SUMMARY:\n")
+  print(x$ModelSummary, row.names = FALSE)
+  
+  if (nrow(x$VIF) > 1) {
+    cat("\n\nMULTICOLLINEARITY DIAGNOSTICS (VIF):\n")
+    print(x$VIF, row.names = FALSE)
+    vifValues <- x$VIF$VIF
+    
+   # Will put an error message if the VIF is greater than 10
+    if (any(vifValues > 10)) {
+      cat("Note: Some predictors have VIF > 10, indicating high multicollinearity.\n")
+    }
+  }
+  
+  cat("\n")
+}
+```
+
+# Test Code with Existing Dataset:
+
+Using the mtcars function naturally within R:
+
+```{r}
+data(mtcars)
+
+# Run OLS regression
+PracticeCarsResult <- OLSRun(data = mtcars, 
+                  outcomeVar = "mpg", 
+                  predictorVars = c("wt", "hp"))
+
+# Print results
+print(PracticeCarsResult)
+```
+This is the output when running the function I created on the mtcars data set.
+
+## EXAMPLE 2: Comparison of my function to R's built-in lm() function
+
+```{r}
+# Run R's built-in lm() function
+lmResult <- lm(mpg ~ wt + hp, data = mtcars)
+lmSummary <- summary(lmResult)
+
+cat("Built-in lm() Results:\n")
+print(lmSummary)
+
+comparisonDF <- data.frame(
+  Variable = PracticeCarsResult$Coefficients$Variable,
+  OLSRun_Estimate = PracticeCarsResult$Coefficients$Estimate,
+  LMEstimate2 = round(coef(lmResult), 4),
+  Difference = round(PracticeCarsResult$Coefficients$Estimate - coef(lmResult), 8)
+)
+print(comparisonDF, row.names = FALSE)
+```
+When comparing the coefficients the difference should be close to zero. This proves that the results for the built-in R function match the function that I created. The coefficient estimates, standard errors, and R-squared values are all identical, which confirms that the OLSRun function is implementing the OLS formulas correctly.
+
+## EXAMPLE 3: Handling Missing Data
+
+```{r}
+# Create a copy of mtcars with some missing values for testing
+MTCarsMissing <- mtcars
+MTCarsMissing$mpg[c(1, 5, 10)] <- NA
+MTCarsMissing$wt[c(3, 7)] <- NA
+
+MissingDataResult <- OLSRun(data = MTCarsMissing, 
+                  outcomeVar = "mpg", 
+                  predictorVars = c("wt", "hp"))
+print(MissingDataResult)
+```
+
+## EXAMPLE 4: Multiple Predictors with VIF Diagnostics
+
+```{r}
+VIFResult <- OLSRun(data = mtcars, 
+                  outcomeVar = "mpg", 
+                  predictorVars = c("wt", "hp", "disp", "drat"))
+print(VIFResult)
+```
+
+## Example 5: Example with iris dataset (dataset automatically within R)
+```{r}
+data(iris)
+
+IrisResult <- OLSRun(
+  data = iris,
+  outcomeVar = "Sepal.Length",
+  predictorVars = c("Sepal.Width", "Petal.Length")
+)
+
+print(IrisResult)
+```
+
+## Example 6: Comparing to R's natural lm function
+
+```{r}
+IrisLM <- lm(Sepal.Length ~ Sepal.Width + Petal.Length, data = iris)
+
+summary(IrisLM)
+```
+
+This output matches the output when running my created function, which further confirms that my created funcitons runs as expected.

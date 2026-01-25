@@ -1,0 +1,584 @@
+---
+title: "Project2_menon.142F"
+author: "Aditya Menon"
+date: "2025-04-11"
+output: pdf_document
+---
+
+```{r, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+library(knitr)
+library(rmarkdown)
+library(caret)
+library(randomForest)
+library(glmnet)
+library(rpart)
+library(rpart.plot)
+options(repos = c(CRAN = "https://cloud.r-project.org/"))
+install.packages("patchwork")
+
+KenDef <- read_csv("~/Desktop/ncaam2025/kenpom_defense.csv")
+KenOff <- read_csv("~/Desktop/ncaam2025/kenpom_offense.csv")
+Post <- read_csv("~/Desktop/ncaam2025/postseason.csv")
+KenSumm <- read_csv("~/Desktop/ncaam2025/kenpom_summary.csv")
+KenPointDist <- read_csv("~/Desktop/ncaam2025/kenpom_pointdist.csv")
+MM2225 <- read_csv("~/Desktop/ncaam2025/mm2002_2025.csv")
+```
+
+```{r, include=FALSE}
+names(KenOff)
+summary(KenOff)
+str(KenOff)
+```
+
+
+# Question 1
+
+## Analysis of Kenpom Offense:
+
+```{r, echo=FALSE}
+library(patchwork)
+
+KenOff1 <- ggplot(KenOff, aes(x = eFGPct)) + 
+  geom_histogram(bins = 40, fill = "blue", color = "black") + 
+  labs(title = "Effective Field Goal Percentage")
+
+KenOff2 <- ggplot(KenOff, aes(x = TOPct)) + 
+  geom_histogram(bins = 40, fill = "red", color = "black") + 
+  labs(title = "Turnover Percentage")
+
+KenOff3 <- ggplot(KenOff, aes(x = ORPct)) + 
+  geom_histogram(bins = 40, fill = "green", color = "black") + 
+  labs(title = "Offensive Rebound Percentage")
+
+KenOff4 <- ggplot(KenOff, aes(x = FTRate)) + 
+  geom_histogram(bins = 40, fill = "purple", color = "black") + 
+  labs(title = "Free Throw Rate")
+
+KenOff1 + KenOff2 + KenOff3 + KenOff4
+
+```
+
+Looking at these graphs we can determine what the different counts were for the different variables. For the eFGPct variable the value for teams is generally around 50%. Turnover percentage is generally low around 20%. This data is very spread out and the data clusters together alot. ORPct is the most spread out and ranges from around 15% to 35%. FT is also something that can vary alot from around 20% to 55%. This data is very telling in in the overall spread and how much teams vary in their values. Summary and structure was looked at too for this datafile but not represented within this code file. 
+
+
+```{r, echo=FALSE}
+library(dplyr)
+
+Top5eFGPctKenOff <- KenOff %>%
+  select(Season, TeamName, eFGPct) %>%
+  arrange(desc(eFGPct)) %>%
+  slice_head(n = 5)
+
+Top5TOPctKenOff <- KenOff %>%
+  select(Season, TeamName, TOPct) %>%
+  arrange(desc(TOPct)) %>%
+  slice_head(n = 5)
+
+Top5ORPctKenOff <- KenOff %>%
+  select(Season, TeamName, ORPct) %>%
+  arrange(desc(ORPct)) %>%
+  slice_head(n = 5)
+
+Top5FTRateKenOff <- KenOff %>%
+  select(Season, TeamName, FTRate) %>%
+  arrange(desc(FTRate)) %>%
+  slice_head(n = 5)
+
+Top5eFGPctKenOff
+Top5TOPctKenOff
+Top5ORPctKenOff
+Top5FTRateKenOff
+```
+
+This is a very simple way to look at the best teams in history for each variable no matter the season just purely on the value of the variable. Since this is for Kenpom Offense the higher the value the better except for turnovers which is the opposite. This is good to look at what the structure of the table is like and what teams historically were the best in each respective category.
+
+
+```{r, echo=FALSE}
+library(corrplot)
+CorrMatOff <- cor(KenOff[, c("eFGPct", "TOPct", "ORPct", "FTRate")])
+print(round(CorrMatOff, 3))
+```
+
+This matrix shows us the general correlation values for each variable with each other. This was done to give a general idea on what variables seem to influence each other giving intel on what topics to analyze. Within this data it is important to note that eFGPct is inverse to Turnover percent. The other variables seem weakly correlated except for FTRate and ORPct which have a slight positive correlation.
+
+## Analysis of Kenpom Defense:
+
+```{r, include=FALSE}
+summary(KenDef)
+str(KenDef)
+```
+
+```{r, echo=FALSE}
+
+KenDef1 <- ggplot(KenDef, aes(x = eFGPct)) + 
+  geom_histogram(bins = 40, fill = "blue", color = "black", alpha = 0.7) + 
+  labs(
+    title = "Effective Field Goal Percentage", 
+    x = "Effective Field Goal Percentage", 
+    y = "Frequency"
+  )
+
+KenDef2 <- ggplot(KenDef, aes(x = TOPct)) + 
+  geom_histogram(bins = 40, fill = "red", color = "black", alpha = 0.7) + 
+  labs(
+    title = "Turnover Percentage", 
+    x = "Turnover Percentage", 
+    y = "Frequency"
+  )
+
+KenDef3 <- ggplot(KenDef, aes(x = ORPct)) + 
+  geom_histogram(bins = 40, fill = "green", color = "black", alpha = 0.7) + 
+  labs(
+    title = "Offensive Rebound Percentage", 
+    x = "Offensive Rebound Percentage", 
+    y = "Frequency"
+  )
+
+KenDef4 <- ggplot(KenDef, aes(x = FTRate)) + 
+  geom_histogram(bins = 40, fill = "purple", color = "black", alpha = 0.7) + 
+  labs(
+    title = "Free Throw Rate", 
+    x = "Free Throw Rate", 
+    y = "Frequency"
+  )
+
+KenDef1 + KenDef2 + KenDef3 + KenDef4
+```
+
+This graph depicts the same variables as before but no on the defensive side. It is important to note that compared to Kenpom offense it seems that there are two general chunks of data for all the variables except for Free Throw Rate. Once again the creation of histograms shows how much the data varies fro each category. Generally the histograms have a right side tail. Free throw percent is the most spread out data while the turnover percent is very clustered together. It is important to note that there seems to be a couple of data points that are said to have 100% turnover percents within the data set which is very unlikely in the game of basektball and is most likely an error. The most unique factor here are that three of the four variables have two peaks. Summary and structure was looked at too for this datafile but not represented within this code file. 
+
+```{r, echo=FALSE}
+CorrMatDef <- cor(KenDef[, c("eFGPct", "TOPct", "ORPct", "FTRate")])
+print(round(CorrMatDef, 3))
+```
+This correlation matrix shows that there seems to be a high correlation ebtween eFGPct and TOPct and between eFGPct and ORPct as well as ORPct and TOPct. While all the variables with FTRate are inversely correlated. This data was very telling that the variables involved differ in wether they influence each other or not.
+
+
+```{r, echo=FALSE}
+
+Top5eFGPct <- KenDef %>%
+  select(Season, TeamName, eFGPct) %>%
+  arrange(eFGPct) %>%
+  slice_head(n = 5)
+
+Top5TOPct <- KenDef %>%
+  select(Season, TeamName, TOPct) %>%
+  arrange(TOPct) %>%
+  slice_head(n = 5)
+
+Top5ORPct <- KenDef %>%
+  select(Season, TeamName, ORPct) %>%
+  arrange(ORPct) %>%
+  slice_head(n = 5)
+
+Top5FTRate <- KenDef %>%
+  select(Season, TeamName, FTRate) %>%
+  arrange(FTRate) %>%
+  slice_head(n = 5)
+
+Top5eFGPct
+Top5TOPct
+Top5ORPct
+Top5FTRate
+```
+
+This data shows the best defensive teams, however unlike the offensive Kenpom this data should be looked at for lower values since it depicts a better defensive rating/performance. While we did note that some variables are correlated it is not very common that a team is present in the top five of multiple categories. 
+
+
+## Analysis of Kenpom Point Distribution:
+
+```{r, include=FALSE}
+summary(KenPointDist)
+str(KenPointDist)
+```
+
+```{r, echo=FALSE}
+library(dplyr)
+library(corrplot)
+
+CorPtDist <- KenPointDist %>%
+  select(OffFT, Off2PtFG, Off3PtFG, DefFT, Def2PtFG, Def3PtFG)
+
+CorMat <- cor(CorPtDist, use = "complete.obs")
+
+corrplot(CorMat, method = "color", type = "lower",
+         addCoef.col = "black", tl.col = "black", tl.srt = 45,
+         col = colorRampPalette(c("blue", "white", "red"))(200))
+```
+
+This correlation matrix shows that there is a strong negative correlation between Off3ptFG and Off2PTFG and Def2PtFG and Def3PtFG. There is a weak negative correlation between Off3PtFG and OffFT and a slight positive correlation between OffFt and DefFT. The other variables are on the weaker side of either strong or weak correlation. In general the relationship between the variables is never too strong. 
+
+
+```{r, echo=FALSE}
+KenPointDist1 <- KenPointDist %>%
+  filter(Season >= 2010) %>%
+  ggplot(aes(x = factor(Season), y = DefFT)) + 
+  geom_boxplot(fill = "red", alpha = 0.7) + 
+  labs(title = "Free Throw Defense by Season", x = "Season", y = "Def FT %")
+
+KenPointDist2 <- KenPointDist %>%
+  filter(Season == 2023) %>%
+  arrange(desc(Off3PtFG)) %>%
+  slice_head(n = 10) %>%
+  ggplot(aes(x = reorder(TeamName, Off3PtFG), y = Off3PtFG)) + 
+  geom_col(fill = "blue") + 
+  coord_flip() +
+  labs(title = "Top 10 Teams - 3PT FG% (2023 Season)", x = "Team", y = "3PT FG%")
+
+KenPointDist3 <- KenPointDist %>%
+  ggplot(aes(x = OffFT, y = Off2PtFG)) + 
+  geom_point(alpha = 0.4, color = "green") + 
+  geom_smooth(method = "lm", se = FALSE, color = "black") + 
+  labs(title = "Offensive FT% vs 2PT FG%", x = "Offensive FT%", y = "Offensive 2PT FG%")
+
+print(KenPointDist1)
+ggsave("KenPointDist1.png", plot = KenPointDist1, width = 6, height = 4, dpi = 300)
+
+print(KenPointDist2)
+ggsave("KenPointDist2.png", plot = KenPointDist2, width = 6, height = 4, dpi = 300)
+
+print(KenPointDist3)
+ggsave("KenPointDist3.png", plot = KenPointDist3, width = 6, height = 4, dpi = 300)
+
+```
+For the first graph created it can be seen that there slight decline in overall DefFt% after each season. There are also numerous outliers present for many of the points presents. The second graph shows the top ten teams of the 2023 season when it comes to 3PT FG% with Chattanooga at the very top with a value of about 43%. The third graph shows the plotted values of Offensive FT% to Offensive 2PT FG%. It shows that in general there is a slight positive correlation between the two variables, it is also important to note that the data does seem to spread out alot indicating alot of variability with outliers also being present.
+
+
+## Analysis for MM2225
+
+```{r, echo=FALSE}
+MM22251 <- ggplot(MM2225, aes(x = AdjOE)) + 
+  geom_histogram(bins = 40, fill = "orange", color = "black", alpha = 0.7) + 
+  labs(title = "Distribution of Adj Off Efficiency", 
+       x = "Adjusted Offensive Efficiency", y = "Frequency")
+
+MM22252 <- ggplot(MM2225, aes(x = AdjDE)) + 
+  geom_histogram(bins = 40, fill = "green", color = "black", alpha = 0.7) + 
+  labs(title = "Distribution of Adj Def Efficiency", 
+       x = "Adjusted Defensive Efficiency", y = "Frequency")
+
+MM22251 + MM22252
+```
+The graphs created show the range and frequency of teams adjusted offensive and defensive efficiency. Based on thsi a score of 120 is deemed as very good and a score below 100 is deemed poor. This is especially true for Adjusted defensive efficiency where for offensive the values are more shifted to the left and encompasses more occurrences of values close to 100.
+
+```{r, echo=FALSE}
+MMCorr <- MM2225[, c("Adjusted Offensive Efficiency", 
+                              "Adjusted Defensive Efficiency", 
+                              "Avg Possession Length (Offense)", 
+                              "Avg Possession Length (Defense)")]
+
+colnames(MMCorr) <- c("AdjOE", "AdjDE", "PossLenOff", "PossLenDef")
+
+CorMM1 <- cor(MMCorr, use = "complete.obs")
+print(CorMM1)
+```
+Looking at these correlation values it seems that there is generally a negative correlation between the two variables, there is a slightly strong negative correlation between AdjOE and AdjDE, the other one of note is between PossLenDEf and PossLenOff which seem to have a slightly strong positive correlation.
+
+## Simple analysis of Post (Match Madness Data)
+```{r}
+summary(Post)
+head(Post)
+```
+For this because it is merely categorical information about seeding team name and season I just simply analyzed the data and look at the summary to see the ranges of the data and the top five results to see what the data set looks like. The important thing to note here is that the dataset has many instances where the data is empty and instead just NA. This is something that may have to be addressed later on when doign analysis.
+
+
+## Analysis for KenSumm:
+
+```{r}
+KenSummCorr <- KenSumm %>%
+  select(
+          AdjOE, RankAdjOE,
+          AdjDE, RankAdjDE,
+         AdjEM, RankAdjEM)
+
+cor_ks <- cor(KenSummCorr, use = "complete.obs")
+
+print(round(cor_ks, 3))
+
+corrplot(cor_ks, method = "color", type = "lower",
+         addCoef.col = "black", tl.col = "black", tl.srt = 45,
+         col = colorRampPalette(c("blue", "white", "red"))(200))
+
+```
+
+This correlation matrix shows that there is strong negative correlation between Rank ADjEM and AdjOE. Most of the data points present show a strong correlation between the variables whether it is a positive or negative correlation. This makes sense as many variables go against each other in this situation. Many of the variables with a strong correlation are between randk and rating which makes sense because the rank is determined by the score. 
+
+
+
+# Question 2
+
+## For Kenpom Offense:
+
+```{r, echo=FALSE}
+cluster_data <- KenOff %>%
+  select(eFGPct, TOPct, ORPct, FTRate) %>%
+  na.omit() %>%
+  scale()  
+
+set.seed(142)
+km <- kmeans(cluster_data, centers = 3, nstart = 25)
+
+pca <- prcomp(cluster_data, scale. = TRUE)
+
+PCAData1 <- data.frame(pca$x)
+
+PCAData1$cluster <- as.factor(km$cluster)
+
+ggplot(PCAData1, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "PCA: First Two Principal Components",
+       x = "PC1", y = "PC2") +
+  scale_color_manual(values = c("red", "blue", "green")) 
+```
+
+Looking at this model the red group is tightly grouped together a bit to the left of the origin. There are many parts where blue overlaps with the red , implying there is not muh difference in their values. There is one very strong outlier within the data set.The green cluster is generally towards the bottom left cluster and seems to have the most variance. 
+
+## For KenPom Defense:
+
+```{r, echo=FALSE}
+CLusterDef <- KenDef %>% 
+  select(eFGPct, TOPct, ORPct, FTRate) %>%  
+  na.omit() %>% 
+  scale()  
+
+set.seed(142)
+KMDef <- kmeans(CLusterDef, centers = 3, nstart = 25)
+
+PCADef <- prcomp(CLusterDef, scale. = TRUE)
+PCADefD <- data.frame(PCADef$x)
+
+PCADefD$cluster <- as.factor(KMDef$cluster)
+
+ggplot(PCADefD, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "PCA: First Two Principal Components (KenDef)",
+       x = "PC1", y = "PC2") +
+  scale_color_manual(values = c("red", "blue", "green"))
+```
+Looking at this model the blue and green clusters are clearly more similar while the red it very far to the right and has a very strong outlier present. There is not as much overlap as the previous dataset present
+
+## For KenPom Point Distance:
+
+```{r, echo=FALSE}
+
+ClusterDPDist <- KenPointDist %>%
+  select(OffFT, Off2PtFG, Off3PtFG, DefFT, Def2PtFG, Def3PtFG) %>%  # Variables used earlier
+  na.omit() %>%  
+  scale()  
+
+set.seed(142)
+KMPtDist <- kmeans(ClusterDPDist, centers = 3, nstart = 25)
+
+PCAPTDist <- prcomp(ClusterDPDist, scale. = TRUE)
+
+PCAPTDistD <- data.frame(PCAPTDist$x)
+
+PCAPTDistD$cluster <- as.factor(KMPtDist$cluster)
+
+library(ggplot2)
+ggplot(PCAPTDistD, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(title = "PCA: First Two Principal Components (KenPointDist)",
+       x = "PC1", y = "PC2") +
+  scale_color_manual(values = c("red", "blue", "green"))
+```
+The PCA for this chart is much more spread out and there is much more variation within each group compared to the other previously made models. The most important feature here is that the clusters are not tightly packed though it is also important to note that there is not much overlap in groups within this data set.
+
+## For MM2225 dataset:
+
+```{r, echo=FALSE}
+
+ClusterMM2225 <- MM2225 %>%
+  select(OffFT, Off2PtFG, Off3PtFG, DefFT, Def2PtFG, Def3PtFG) %>%  
+  na.omit() %>%   
+  scale()        
+
+set.seed(142) 
+KMPtMM2225 <- kmeans(ClusterMM2225, centers = 3, nstart = 25)
+
+PCAPTMM2225 <- prcomp(ClusterMM2225, scale. = TRUE)
+
+PCAPTMM2225 <- data.frame(PCAPTMM2225$x)
+PCAPTMM2225$cluster <- as.factor(KMPtMM2225$cluster)
+
+ggplot(PCAPTMM2225, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "PCA: First Two Principal Components (KenPointDist)",
+    x = "PC1",
+    y = "PC2"
+  ) +
+  scale_color_manual(values = c("red", "blue", "green")) 
+```
+This PC model shows again a very spread out data set where there are many outliers present, however compared to the last model there does seem to be much more overlap between all three groups.
+
+## For Kenpom Summary Data:
+
+```{r, echo=FALSE}
+
+ClusterSumm <- KenSumm %>%
+  select(Tempo, AdjTempo, OE, AdjOE, DE, AdjDE, AdjEM) %>% 
+  na.omit() %>% 
+  scale()
+
+set.seed(142)
+KMSumm <- kmeans(ClusterSumm, centers = 3, nstart = 25)
+
+PCASumm <- prcomp(ClusterSumm, scale. = TRUE)
+PCASummD <- data.frame(PCASumm$x)
+PCASummD$cluster <- as.factor(KMSumm$cluster)
+
+ggplot(PCASummD, aes(x = PC1, y = PC2, color = cluster)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "PCA: First Two Principal Components (KenSumm)",
+    x = "PC1",
+    y = "PC2"
+  ) +
+  scale_color_manual(values = c("red", "blue", "green"))
+
+```
+
+This is a very unique model because the points are very packed together. There are two things to look at: first, there is one blue point that is very clearly mixed into the green section, implying a lot of similarity. Second, there are many outliers, especially in the green section, which has extremely far outliers from the main grouping possibly suggesting bad data that should be analyzed further.
+
+# Question 3
+
+```{r, echo=FALSE}
+
+PostSumm <- merge(Post, KenSumm, by.x = c("Season", "Team Name"), by.y = c("Season", "TeamName"))
+
+PostSummD <- PostSumm %>% select(Season, `Team Name`, Seed, AdjOE, AdjDE)
+
+set.seed(142)
+trainIndex <- createDataPartition(PostSummD$Seed, p = 0.8, list = FALSE)
+trainData <- PostSummD[trainIndex, ]
+testData <- PostSummD[-trainIndex, ]
+```
+
+
+
+```{r, echo=FALSE}
+
+RFModel <- randomForest(Seed ~ AdjOE + AdjDE, data = trainData, importance = TRUE, ntree = 100)
+
+RFPred <- predict(RFModel, testData)
+
+RFRmse <- sqrt(mean((RFPred - testData$Seed)^2))
+print(paste("Random Forest RMSE:", round(RFRmse, 3)))
+
+varImpPlot(RFModel, main = "Random Forest - Feature Importance")
+``` 
+
+Looking at the charts created for AdjOE it seems that it is more important according to both %IncMSE and IncNodePurity. The chart shows that AdjOE has a higher %IncMSE value by about 10.5% and a significantly higher IncNodePurity value by about 15,000.
+Looking at the AdjDE it shows lower importance with %IncMSE around 8.5% and a smaller IncNodePurity.
+
+The substantial difference between IncNodePurity implies that AdjOE provides a better split in the decision tree for the Random Forest. Which means it is a more influential predictor.
+
+
+```{r, echo=FALSE}
+XTra <- as.matrix(trainData[, c("AdjOE", "AdjDE")])
+YTra <- trainData$Seed
+XTest <- as.matrix(testData[, c("AdjOE", "AdjDE")])
+YTest <- testData$Seed
+
+LassoModel <- cv.glmnet(XTra, YTra, alpha = 1)
+
+LassoPred <- predict(LassoModel, s = "lambda.min", newx = XTest)
+
+LassoRMSE <- sqrt(mean((LassoPred - YTest)^2))
+print(paste("LASSO RMSE:", round(LassoRMSE, 3)))
+```
+
+```{r, echo=FALSE}
+library(class)
+
+trainData_norm <- scale(trainData[, c("AdjOE", "AdjDE")])
+testData_norm <- scale(testData[, c("AdjOE", "AdjDE")])
+
+k <- 5  
+knn_predictions <- knn(trainData_norm, testData_norm, trainData$Seed, k = k)
+
+knn_predictions_numeric <- as.numeric(knn_predictions)
+knn_rmse <- sqrt(mean((knn_predictions_numeric - testData$Seed)^2))
+print(paste("KNN RMSE:", round(knn_rmse, 3)))
+
+plot(testData$Seed, knn_predictions_numeric, main = "KNN - Predicted vs Actual", 
+     xlab = "Actual Seed", ylab = "Predicted Seed", col = "blue")
+abline(0, 1, col = "red")  # Identity line
+
+```
+
+Looking at the graph created which is showing a predicted vs. actual plot for a K-Nearest Neighbors model. Some important things to consider is that there seems to be a positive linear relationship between predicted and actual seed values. However the data points do seem to vary and show considerable scatter around the line. The model seems to show that it has  moderate predictive power with many predictions deviating by a considerable amount from actual values.
+This seems to imply that while there is some positive correlation it is not super strong and teams often times deviate from the line.
+
+```{r, echo=FALSE}
+PostSummD$Seed <- factor(PostSummD$Seed, levels = 1:15)
+
+set.seed(142)
+trainIndex <- createDataPartition(PostSummD$Seed, p = 0.8, list = FALSE)
+trainData <- PostSummD[trainIndex, ]
+testData <- PostSummD[-trainIndex, ]
+
+tree_model_offense <- rpart(Seed ~ AdjOE, 
+                            data = trainData, 
+                            method = "class", 
+                            control = rpart.control(maxdepth = 8, minsplit = 10)) 
+
+rpart.plot(tree_model_offense, 
+           type = 3,          
+           extra = 104,        
+           fallen.leaves = TRUE, 
+           box.palette = "Reds",  
+           main = "Classification Tree for Predicting Seed Based on AdjOE")
+
+tree_model_defense <- rpart(Seed ~ AdjDE, 
+                            data = trainData, 
+                            method = "class", 
+                            control = rpart.control(maxdepth = 4, minsplit = 10))  
+
+rpart.plot(tree_model_defense, 
+           type = 3,           
+           extra = 104,        
+           fallen.leaves = TRUE, 
+           box.palette = "Blues",  
+           main = "Classification Tree for Predicting Seed Based on AdjDE")
+
+```
+For the AdjOE the important ideas to consider here are that there is primary split at AdjDE less than 93 then a second one at at AdjDE is less than 102 for values greater than or equal to 93. Three terminal nodes are present that are predicting seeds 1, 4, and 15. The node distributions show the different probabilities across different seed values which are all relatively close. In general approximately 16% of data falls within the first node, 66% within the middle node, and 18% within the rightmost node.
+
+For the DefOE the primary split is at AdjOE greater than or equal to 118. The secondary split is at AdjOE greater than or equal to 105 for values less than 118. Three terminal nodes are used for predicting seeds 1, 5, and 15, The distribution percentages are 12%, 74%, and 13% across all three nodes.
+
+# Question 4
+
+## Statistical Findings:
+The histograms originally created showed that for offensive metrics there was a different general distribution pattern compared to the defensive metrics. Offensive metrics such as eFGPct cluster around 50%, while the defensive models often showed a bimodal distribution. From this, we can assume that teams have a more standardized offensive approach but vary more when it comes to defensive strategies. The graph created showed that free throw percentages were more spread out, while turnover percent was clustered together. The defensive metrics graphs showed that there were generally two chunks of data—two peaks—for all the variables except for Free Throw Rate.
+
+The analysis determined that there was a significantly stronger correlation between the variables within the defensive metrics compared to the offensive metrics. This is especially demonstrated by the correlation matrices where the defensive metrics show correlations ranging from 0.763 to 0.829 between eFGPct, TOPct, and ORPct, while the offensive metrics' correlations are much weaker. An example of this that was brought up before was that the eFGPct is inverse to Turnover Percent for offensive metrics, with a correlation of -0.553.
+
+Focusing more on the elite team characteristics, the top teams in each metric category achieve remarkably better/larger values compared to the general population of teams. An example of this is Gonzaga 2021, which achieved an eFGPct of 61.0%, significantly above the typical 50% cluster shown in the histograms. At the same time, Michigan St. 2001 posted a very good 47% offensive rebound percentage. Looking more on the defensive side, Kentucky 2015 held opponents to just 39.6% eFGPct, while Boise St. in 2018 limited opponents to an 18.4% offensive rebounding percentage.
+
+Looking at three-point shooting specialists, the analysis identified that some teams can specialize in three-point shooting, with Chattanooga leading as the very best in 2023 with approximately 43% 3PT FG%. This was demonstrated by the bar chart showing Top 10 Teams - 3PT FG% (2023 Season) which illustrates the elite performers in this category.
+
+## Practical Findings:
+The classification tree showed that there were clear thresholds that played a significant impact on tournament seeding. The trees created show that teams with AdjOE greaters than or equal to 118 have a 30% probability of receiving a 1-seed, while teams with AdjDE less than 93 have a 26% probability of receiving a 1-seed. It is interesting to note that when creating the tree because the ratings can overlap be very similar the only major distinctions are seed 1,4,15 for Offensive Effeciency and 1,5,15 for Defensive Efficiency.
+
+When looking at trade offs in offensive strategy, the -0.74 correlation between Off3ptFG and Off2ptFG showed that teams that excel at three-point shooting generally score less from two-point range. We can imply from this that teams tend to specialize in either perimeter or interior offensive strategies, but not really both, since they may have to give up some defense to focus on the other type.
+
+Through the code that was run, we know that the LASSO regression model (RMSE: 4.525) outperformed both Random Forest (RMSE: 4.626) and KNN (RMSE: 6.308) when it comes to predicting tournament seeds. From this, we can say that a linear approach with feature selection works better than more complex models used for seed prediction.
+
+Looking at the Random Forest feature importance plot, we can say that while AdjDE has a slightly higher %IncMSE (10.5 vs. 9.0), AdjOE has about double the IncNodePurity value (a difference of 10,000 vs. 5,000). This tells us that while both metrics are important, offensive efficiency may have larger effects at certain critical thresholds.
+
+Looking at the data historically, the time series graph of free throw defense percentages by season showed a slight decline in overall DefFT% after each season, with numerous outliers present for many of the points. This tells us that there may be a gradual shift in defensive strategies or officiating approaches over time.
+
+## Conclusion
+All in all, considering all of these factors, the data analysis conducted shows that basketball performance metrics provide significant insight into team strategies and the tournament's seeding decisions. The stronger correlations present among defensive metrics suggest that defense may require a more systematic unity, while on the flip side, offense allows for more specialized approaches. The classification trees and predictive models created show that efficiency metrics have a strong relationship with tournament seeding and can help provide teams with specific goals to aim for so that they can get better tournament positions. Looking at this information now, I can say that it is important to look at the adjusted offensive efficiency and adjusted defensive efficiency because they are important factors to consider. Using these stats, I may be able to predict who was under- or over-seeded. By focusing on these kinds of situations, it’ll be easier to possibly predict upsets since the teams playing may not meet the expectations of a team that should have the seed they are. However, it is important to remember that the data does not fully imply that these are the only variables that matter, so more analysis should be done to determine if more variables may be more influential, or if a combination of variables helped better predict seeding, which would help predict the winners of games if they have been over or under-seeded. The other major idea that would be important in making a bracket is realizing that AdJOE seems to have more of an impact than ADJDE. The findings do not suggest that defense does not matter; it just indicates that offense may be more vital, so when making brackets, if the choice is close, it is oftentimes better to choose the better offensive team since they are more likely to have the higher seed, implying they should perform better overall within the tournament. This is an idea we could apply to the recent national championship where Florida was known as an offensive juggernaut while Houston was known for being defensively very sound and the best in the nation. In the end, the better offensive team performed better than the defensive team. However, like said before, while the relationship between Adj OE and Adj DE and seeding does exist, it is not extremely strong enough to indicate it is the only variable that matters. There are many factors, such as a team properly balancing the two parts of the game and maybe even luck, that should be studied and considered.
+
