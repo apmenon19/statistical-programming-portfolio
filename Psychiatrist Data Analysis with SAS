@@ -1,0 +1,106 @@
+/* Define library */
+libname mylib '/home/u63988357/STAT5740HW/HW3';
+
+/* Question 1A: Import the Excel file */
+PROC IMPORT DATAFILE='/home/u63988357/STAT5740HW/HW3/pone.0230204.s004 Final Code.xlsx'
+    OUT=mylib.Psych_adj_DJ
+    DBMS=XLSX
+    REPLACE;
+    SHEET="Demographic&Job satisfaction"; /* Specify the sheet name */
+    GETNAMES=YES;
+RUN;
+
+/* Create the ID variable and keep the required observations */
+data mylib.Psych_adj_DJ;
+    set mylib.Psych_adj_DJ;
+    ID = _N_ + 2;
+    if _N_ > 229 then delete;
+run;
+
+proc print data=mylib.Psych_adj_DJ (obs=5); /* Print the first 5 observations */
+    var ID;
+run;
+
+proc print data=mylib.Psych_adj_DJ (firstobs=223); /* Print observations starting from #223 */
+    var ID;
+run;
+
+/* Generate random numbers */
+data mylib.Psych_adj_DJ;
+    set mylib.Psych_adj_DJ;
+    random_num = rand('UNIFORM');
+run;
+
+proc sort data=mylib.Psych_adj_DJ;
+    by random_num;
+run;
+
+/* Clean the position variable and create the sample variable */
+data mylib.Psych_adj_DJ;
+    set mylib.Psych_adj_DJ;
+    position_cleaned = strip(position);
+    if position_cleaned = "General psychiatrist" then do;
+        if random_num <= 0.1 then sample = "YES";
+        else sample = "NO";
+    end;
+    else do;
+        if random_num <= 0.2 then sample = "YES";
+        else sample = "NO";
+    end;
+run;
+
+/* Create sample datasets */
+data mylib.psych_sample_gp mylib.psych_sample_other;
+    set mylib.Psych_adj_DJ;
+    if sample = "YES" then do;
+        if C = "General psychiatrist" then output mylib.psych_sample_gp;
+        else output mylib.psych_sample_other;
+    end;
+run;
+
+/* Get dataset summaries */
+proc contents data=mylib.psych_sample_gp;
+run;
+
+proc contents data=mylib.psych_sample_other;
+run;
+
+/* Get the number of observations in each dataset */
+proc sql;
+    select 'psych_sample_gp' as Dataset, count(*) as Observations
+    from mylib.psych_sample_gp
+    union
+    select 'psych_sample_other' as Dataset, count(*) as Observations
+    from mylib.psych_sample_other;
+quit;
+
+/* Question 2 */
+libname mydata '/home/u63988357/STAT5740HW/HW3';
+
+proc import datafile='/home/u63988357/STAT5740HW/HW3/H1.csv'
+   out=mydata.hotel_data
+   dbms=csv
+   replace;
+   getnames=yes;
+run;
+
+/* Code to filter for "Check-Out" reservations first */
+data check_out_data;
+   set mydata.hotel_data;
+   if ReservationStatus = "Check-Out";
+run;
+
+/* The code below will perform calculations on the data that was filtered */
+data hotel_data_copy;
+   set check_out_data end=last;
+   TotNights = StaysInWeekendNights + StaysInWeekNights;
+   TotBill = ADR * TotNights;
+   retain CumulRevenue 0;
+   CumulRevenue + TotBill;
+   if last then output;
+run;
+
+/* The code below will print the cumulative revenue for the last observation */
+proc print data=hotel_data_copy;
+   var CumulRevenue;
+run;
