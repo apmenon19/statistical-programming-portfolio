@@ -1,0 +1,53 @@
+/* Load the necessary data sets */
+libname hw '/home/u63988357/STAT5740HW/HW10';
+data flights;
+  set hw.aprilsubset;
+run;
+
+/* Question 1 */
+
+/* Code to create density plot */
+proc univariate data=flights;
+  var TAXI_OUT;
+  histogram / normal;
+  title 'Density Plot of Taxi Out Time';
+run;
+
+/* Estimate mean taxi out of gate time */
+proc means data=flights mean;
+  var TAXI_OUT;
+  title 'Mean Taxi Out of Gate Time';
+run;
+
+/* Code to test null hypothesis that mean will equal 11.5 minutes */
+proc ttest data=flights h0=11.5;
+  var TAXI_OUT;
+  title 'Test of Mean Taxi Out Time equal to 11.5 Minutes';
+run;
+
+/* Code to calculate 90% confidence interval */
+proc means data=flights alpha=0.1 clm;
+  var TAXI_OUT;
+  title '90% Confidence Interval for Mean Taxi Out Time';
+run;
+
+/* Question 2*/
+
+/* Code to create bar plot */
+proc freq data=flights order=freq;
+  tables ORIGIN_CITY_NAME /  plots=freqplot;
+  title 'Proportion of Flights based on Origin City';
+run;
+
+/* Code to calcualte the proportion of flights from Columbus */
+proc freq data=flights;
+  tables ORIGIN_CITY_NAME;
+  where ORIGIN_CITY_NAME = 'Columbus, OH';
+  title 'Proportion of Flights from Columbus - Ohio';
+run;
+
+/* Code to test null hypothesis reagrding proportion equal to 0.45 */
+proc freq data=flights;
+  tables ORIGIN_CITY_NAME / binomial(level='Columbus, OH' p=0.45) alpha=0.08;
+  title 'Test of Proportion of Flights from Columbus, OH = 0.45';
+run;
