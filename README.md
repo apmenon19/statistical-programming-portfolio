@@ -133,7 +133,7 @@ Collaboration on data science and research projects
 Reach out:
 
 📧 Email: adymenon@bu.edu
-💼 LinkedIn: Connect with me
+💼 LinkedIn: Connect with me - www.linkedin.com/in/aditya-menon-6a6928239
 📱 Phone: 973-906-1328
 
 
