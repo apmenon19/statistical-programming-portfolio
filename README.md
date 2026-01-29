@@ -1,5 +1,5 @@
 # statistical-programming-portfolio
-Portfolio of statistical programming projects using SAS, R, and Python. Demonstrates regression modeling, predictive analytics, data visualization, and quality control procedures across various applications.
+Portfolio of statistical programming projects using SAS, Java, R, and Python. Demonstrates regression modeling, predictive analytics, data visualization, and quality control procedures across various applications.
 
 
 Hi, I'm Aditya Menon 👋
